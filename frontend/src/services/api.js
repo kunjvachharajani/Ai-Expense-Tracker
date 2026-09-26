@@ -14,22 +14,35 @@ async function getAuthHeaders() {
   };
 }
 
-async function request(path, options = {}) {
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function request(path, options = {}, retries = 2) {
   const headers = await getAuthHeaders();
   let res;
-  try {
-    res = await fetch(`${API_URL}${path}`, {
-      ...options,
-      headers: {
-        ...headers,
-        ...(options.headers || {}),
-      },
-    });
-  } catch (err) {
-    if (err.name === 'TypeError' && err.message.includes('fetch')) {
-      throw new Error(`Cannot connect to backend server at ${API_URL}. Please ensure backend is running.`);
+  
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      res = await fetch(`${API_URL}${path}`, {
+        ...options,
+        headers: {
+          ...headers,
+          ...(options.headers || {}),
+        },
+      });
+      break; // Request succeeded
+    } catch (err) {
+      if (err.name === 'TypeError' && err.message.includes('fetch')) {
+        if (attempt < retries) {
+          // Wait 2.5s before retrying (gives Render cold-starts time to wake up)
+          await sleep(2500);
+          continue;
+        }
+        throw new Error(
+          `Backend server is waking up or unreachable (${API_URL}). Please wait a few seconds and try again.`
+        );
+      }
+      throw err;
     }
-    throw err;
   }
 
   if (res.status === 204) return null;
@@ -89,23 +102,32 @@ export async function deleteExpense(id) {
 
 // ---------- Receipts ----------
 
-export async function scanReceipt(file) {
+export async function scanReceipt(file, retries = 2) {
   const headers = await getAuthHeaders();
   const formData = new FormData();
   formData.append('file', file);
 
   let res;
-  try {
-    res = await fetch(`${API_URL}/api/receipts/scan`, {
-      method: 'POST',
-      headers,
-      body: formData,
-    });
-  } catch (err) {
-    if (err.name === 'TypeError' && err.message.includes('fetch')) {
-      throw new Error(`Cannot connect to backend server at ${API_URL}. Please ensure backend is running.`);
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      res = await fetch(`${API_URL}/api/receipts/scan`, {
+        method: 'POST',
+        headers,
+        body: formData,
+      });
+      break;
+    } catch (err) {
+      if (err.name === 'TypeError' && err.message.includes('fetch')) {
+        if (attempt < retries) {
+          await sleep(2500);
+          continue;
+        }
+        throw new Error(
+          `Backend server is waking up or unreachable (${API_URL}). Please wait a few seconds and try again.`
+        );
+      }
+      throw err;
     }
-    throw err;
   }
 
   const data = await res.json();
