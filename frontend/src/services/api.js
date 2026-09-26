@@ -16,13 +16,21 @@ async function getAuthHeaders() {
 
 async function request(path, options = {}) {
   const headers = await getAuthHeaders();
-  const res = await fetch(`${API_URL}${path}`, {
-    ...options,
-    headers: {
-      ...headers,
-      ...(options.headers || {}),
-    },
-  });
+  let res;
+  try {
+    res = await fetch(`${API_URL}${path}`, {
+      ...options,
+      headers: {
+        ...headers,
+        ...(options.headers || {}),
+      },
+    });
+  } catch (err) {
+    if (err.name === 'TypeError' && err.message.includes('fetch')) {
+      throw new Error(`Cannot connect to backend server at ${API_URL}. Please ensure backend is running.`);
+    }
+    throw err;
+  }
 
   if (res.status === 204) return null;
 
@@ -86,11 +94,19 @@ export async function scanReceipt(file) {
   const formData = new FormData();
   formData.append('file', file);
 
-  const res = await fetch(`${API_URL}/api/receipts/scan`, {
-    method: 'POST',
-    headers,
-    body: formData,
-  });
+  let res;
+  try {
+    res = await fetch(`${API_URL}/api/receipts/scan`, {
+      method: 'POST',
+      headers,
+      body: formData,
+    });
+  } catch (err) {
+    if (err.name === 'TypeError' && err.message.includes('fetch')) {
+      throw new Error(`Cannot connect to backend server at ${API_URL}. Please ensure backend is running.`);
+    }
+    throw err;
+  }
 
   const data = await res.json();
   if (!res.ok) throw new Error(data.detail || 'Failed to scan receipt');

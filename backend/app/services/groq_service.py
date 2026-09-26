@@ -149,7 +149,7 @@ async def parse_receipt_image(
     system_prompt = _build_receipt_vision_system_prompt()
 
     payload = {
-        "model": settings.GROQ_MODEL,
+        "model": getattr(settings, "GROQ_VISION_MODEL", "llama-3.2-11b-vision-preview"),
         "messages": [
             {"role": "system", "content": system_prompt},
             {
