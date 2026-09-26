@@ -148,8 +148,9 @@ async def parse_receipt_image(
     b64_str, mime = _prepare_image_for_groq(image_bytes, filename, content_type)
     system_prompt = _build_receipt_vision_system_prompt()
 
+    vision_model = settings.GROQ_VISION_MODEL if getattr(settings, "GROQ_VISION_MODEL", None) else "llama-3.2-11b-vision-preview"
     payload = {
-        "model": getattr(settings, "GROQ_VISION_MODEL", "llama-3.2-11b-vision-preview"),
+        "model": vision_model,
         "messages": [
             {"role": "system", "content": system_prompt},
             {

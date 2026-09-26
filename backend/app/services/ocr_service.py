@@ -21,8 +21,31 @@ async def extract_text_from_image(image_bytes: bytes, filename: str) -> str:
     if not settings.OCR_SPACE_API_KEY:
         raise ValueError("OCR service is not configured.")
 
-    # Determine content type
+    # Determine content type and compress image if needed (OCR.space free limit is 1MB)
     ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else "jpg"
+    
+    if ext != "pdf" and len(image_bytes) > 900 * 1024:
+        try:
+            import io
+            from PIL import Image
+            im = Image.open(io.BytesIO(image_bytes))
+            if im.mode in ("RGBA", "P", "LA"):
+                im = im.convert("RGB")
+            
+            # Resize if dimensions are very large
+            max_dim = 1600
+            if max(im.size) > max_dim:
+                im.thumbnail((max_dim, max_dim), Image.Resampling.LANCZOS)
+            
+            buf = io.BytesIO()
+            im.save(buf, format="JPEG", quality=80, optimize=True)
+            if len(buf.getvalue()) < len(image_bytes):
+                image_bytes = buf.getvalue()
+                ext = "jpg"
+                filename = f"{filename.rsplit('.', 1)[0]}.jpg"
+        except Exception as comp_err:
+            logger.warning(f"Failed to compress image before OCR: {comp_err}")
+
     content_type_map = {
         "jpg": "image/jpeg",
         "jpeg": "image/jpeg",
