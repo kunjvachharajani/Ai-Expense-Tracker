@@ -53,15 +53,16 @@ async def scan_receipt(
     extraction = None
     ocr_text = ""
 
-    # Primary strategy: Groq Multimodal Vision (fast, reliable, not affected by free OCR throttling)
-    try:
-        extraction, ocr_text = await parse_receipt_image(
-            image_bytes=image_bytes,
-            filename=filename,
-            content_type=content_type,
-        )
-    except Exception as vision_err:
-        logger.warning(f"Groq Vision extraction failed, falling back to OCR.space: {vision_err}")
+    # Primary strategy: Groq Multimodal Vision (if a vision model is configured)
+    if settings.GROQ_VISION_MODEL:
+        try:
+            extraction, ocr_text = await parse_receipt_image(
+                image_bytes=image_bytes,
+                filename=filename,
+                content_type=content_type,
+            )
+        except Exception as vision_err:
+            logger.warning(f"Groq Vision extraction failed, falling back to OCR.space: {vision_err}")
 
     # Fallback strategy: OCR.space text extraction + Groq text parsing
     if extraction is None:
