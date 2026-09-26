@@ -20,15 +20,33 @@ app = FastAPI(
     version="1.0.0",
 )
 
+from fastapi.responses import JSONResponse
+
 # CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[settings.FRONTEND_URL, "http://localhost:5173"],
-    allow_origin_regex=r"https://.*\.vercel\.app|http://(localhost|127\.0\.0\.1)(:\d+)?",
+    allow_origins=[
+        settings.FRONTEND_URL,
+        "https://ai-expense-tracker-wheat.vercel.app",
+        "https://ai-expense-tracker-kunjvachharajanis-projects.vercel.app",
+        "https://ai-expense-tracker.vercel.app",
+        "http://localhost:5173",
+        "http://localhost:3000",
+    ],
+    allow_origin_regex=r"^https:\/\/.*\.vercel\.app$|^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request, exc):
+    logging.error(f"Unhandled server error: {exc}", exc_info=True)
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "An internal server error occurred. Please try again."},
+    )
 
 # Register routers
 app.include_router(expenses_router)
