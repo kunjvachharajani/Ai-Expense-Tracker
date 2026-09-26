@@ -4,7 +4,9 @@
  */
 import { supabase } from './supabaseClient';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+const API_URL = import.meta.env.VITE_API_URL !== undefined
+  ? import.meta.env.VITE_API_URL
+  : (import.meta.env.DEV ? 'http://localhost:8000' : '');
 
 async function getAuthHeaders() {
   const { data: { session } } = await supabase.auth.getSession();
