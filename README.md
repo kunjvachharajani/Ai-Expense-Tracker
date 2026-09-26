@@ -1,5 +1,10 @@
 # AI Receipt & Expense Tracker
 
+[![Vercel Deployment](https://img.shields.io/badge/Vercel-Deployed-black?style=flat&logo=vercel)](https://ai-expense-tracker-wheat.vercel.app)
+[![GitHub](https://img.shields.io/badge/GitHub-Repository-blue?style=flat&logo=github)](https://github.com/kunjvachharajani/Ai-Expense-Tracker)
+
+**Live Demo (Frontend):** [https://ai-expense-tracker-wheat.vercel.app](https://ai-expense-tracker-wheat.vercel.app)
+
 An AI-powered expense tracking web application that lets you track daily expenses through **natural language** and **receipt scanning**. Built with FastAPI, React, Groq AI, OCR.space, and Supabase.
 
 ---
@@ -307,13 +312,19 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
 ### Frontend (Vercel)
-```bash
-cd frontend
-npm run build
-# Deploy the dist/ folder to Vercel
-```
 
-Set environment variables in your hosting platform's dashboard.
+- **Production URL:** [https://ai-expense-tracker-wheat.vercel.app](https://ai-expense-tracker-wheat.vercel.app)
+- **CI/CD Integration:** Connected directly to GitHub repository (`kunjvachharajani/Ai-Expense-Tracker`). Every push to the `main` branch automatically triggers an optimized production deployment.
+- **Root Directory:** `frontend/`
+- **Build Command:** `npm run build`
+- **Output Directory:** `dist`
+
+#### Environment Variables (Vercel Project Settings)
+| Variable | Description |
+|---|---|
+| `VITE_SUPABASE_URL` | Supabase Project URL |
+| `VITE_SUPABASE_ANON_KEY` | Supabase Anonymous Key |
+| `VITE_API_URL` | Backend API URL (or production backend URL) |
 
 ---
 
