@@ -27,6 +27,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         settings.FRONTEND_URL,
+        "https://ai-expense-tracker-peach-kappa.vercel.app",
         "https://ai-expense-tracker-wheat.vercel.app",
         "https://ai-expense-tracker-kunjvachharajanis-projects.vercel.app",
         "https://ai-expense-tracker.vercel.app",

@@ -1,9 +1,9 @@
 # AI Receipt & Expense Tracker
 
-[![Vercel Deployment](https://img.shields.io/badge/Vercel-Deployed-black?style=flat&logo=vercel)](https://ai-expense-tracker-wheat.vercel.app)
+[![Vercel Deployment](https://img.shields.io/badge/Vercel-Deployed-black?style=flat&logo=vercel)](https://ai-expense-tracker-peach-kappa.vercel.app)
 [![GitHub](https://img.shields.io/badge/GitHub-Repository-blue?style=flat&logo=github)](https://github.com/kunjvachharajani/Ai-Expense-Tracker)
 
-**Live Demo (Frontend):** [https://ai-expense-tracker-wheat.vercel.app](https://ai-expense-tracker-wheat.vercel.app)
+**Live Demo (Production):** [https://ai-expense-tracker-peach-kappa.vercel.app](https://ai-expense-tracker-peach-kappa.vercel.app)
 
 An AI-powered expense tracking web application that lets you track daily expenses through **natural language** and **receipt scanning**. Built with FastAPI, React, Groq AI, OCR.space, and Supabase.
 
@@ -311,20 +311,24 @@ pip install -r requirements.txt
 uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
-### Frontend (Vercel)
+### Production Deployment (Vercel)
 
-- **Production URL:** [https://ai-expense-tracker-wheat.vercel.app](https://ai-expense-tracker-wheat.vercel.app)
+- **Production URL:** [https://ai-expense-tracker-peach-kappa.vercel.app](https://ai-expense-tracker-peach-kappa.vercel.app)
 - **CI/CD Integration:** Connected directly to GitHub repository (`kunjvachharajani/Ai-Expense-Tracker`). Every push to the `main` branch automatically triggers an optimized production deployment.
-- **Root Directory:** `frontend/`
-- **Build Command:** `npm run build`
-- **Output Directory:** `dist`
+- **Architecture:** Unified fullstack deployment on Vercel — React frontend is compiled to `frontend/dist` and FastAPI Python backend runs as serverless functions under `/api/*`.
 
 #### Environment Variables (Vercel Project Settings)
 | Variable | Description |
 |---|---|
-| `VITE_SUPABASE_URL` | Supabase Project URL |
-| `VITE_SUPABASE_ANON_KEY` | Supabase Anonymous Key |
-| `VITE_API_URL` | Backend API URL (or production backend URL) |
+| `GROQ_API_KEY` | Groq Cloud API key for natural language & receipt data extraction |
+| `OCR_SPACE_API_KEY` | OCR.space API key for receipt text recognition |
+| `SUPABASE_URL` | Supabase Project URL |
+| `SUPABASE_ANON_KEY` | Supabase Anonymous Client Key |
+| `SUPABASE_SERVICE_ROLE_KEY` | Supabase Service Role Secret Key |
+| `GROQ_MODEL` | Groq LLM model name (e.g. `openai/gpt-oss-120b` or `qwen/qwen3.8-27b`) |
+| `VITE_SUPABASE_URL` | Frontend Supabase Project URL |
+| `VITE_SUPABASE_ANON_KEY` | Frontend Supabase Anonymous Key |
+| `VITE_API_URL` | Frontend API URL (leave empty in production to route via `/api`) |
 
 ---
 
