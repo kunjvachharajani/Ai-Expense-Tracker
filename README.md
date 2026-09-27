@@ -88,7 +88,6 @@ ai-receipt-expense-tracker/
 │   │   ├── config.py            # Environment config
 │   │   └── main.py              # FastAPI app entry
 │   ├── database_setup.sql       # Supabase SQL migration
-│   ├── requirements.txt
 │   └── .env.example
 │
 ├── frontend/
@@ -119,6 +118,7 @@ ai-receipt-expense-tracker/
 │   ├── .env.example
 │   └── package.json
 │
+├── requirements.txt
 └── README.md
 ```
 
