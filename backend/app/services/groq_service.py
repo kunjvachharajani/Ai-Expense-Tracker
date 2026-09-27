@@ -60,7 +60,7 @@ ALLOWED PAYMENT METHODS: {', '.join(PAYMENT_METHODS)}
 RULES:
 1. Return ONLY a valid JSON object. No explanation, no markdown, no code fences.
 2. The JSON must have these fields: amount, currency, category, subcategory, merchant, description, date, payment_method
-3. "amount" must be the TOTAL/GRAND TOTAL amount. If multiple totals exist, use the FINAL payable amount (largest total, including tax).
+3. "amount" must be the TOTAL/GRAND TOTAL as a positive number (e.g. 250.00). If multiple totals exist, use the FINAL payable amount (largest total, including tax). If not found, use null.
 4. Do NOT use individual item prices as the total.
 5. "currency" defaults to "INR".
 6. "category" MUST be from the allowed list.
@@ -68,7 +68,7 @@ RULES:
 8. "description" — short summary of the purchase.
 9. "date" — extract from receipt if available, otherwise use today's date. Format: YYYY-MM-DD.
 10. OCR text may be noisy. For example "DOMIN0S" means "DOMINOS", "T0TAL" means "TOTAL". Correct OCR errors intelligently.
-11. If unsure about a field, use null.
+11. If unsure about merchant, subcategory, or payment_method, use null or "Unknown".
 """
 
 
@@ -180,7 +180,7 @@ async def parse_receipt_image(
             f"Payment: {parsed.get('payment_method')}"
         )
 
-    extraction = _validate_extraction_dict(parsed)
+    extraction = _validate_extraction_dict(parsed, ocr_text=ocr_text)
     return extraction, ocr_text.strip()
 
 
@@ -221,7 +221,7 @@ async def parse_receipt_text(ocr_text: str) -> AIExpenseExtraction:
 
     raw_content = await _call_groq_raw(payload)
     parsed = _clean_and_decode_json(raw_content)
-    return _validate_extraction_dict(parsed)
+    return _validate_extraction_dict(parsed, ocr_text=ocr_text)
 
 
 async def generate_spending_summary(stats: dict) -> str:
@@ -296,14 +296,46 @@ def _clean_and_decode_json(raw_content: str) -> dict:
         raise ValueError("AI returned an invalid response. Please try again or enter expense manually.")
 
 
-def _validate_extraction_dict(parsed: dict) -> AIExpenseExtraction:
+def _validate_extraction_dict(parsed: dict, ocr_text: str = "") -> AIExpenseExtraction:
     """Validate and normalize fields into AIExpenseExtraction schema."""
+    import re
+
     # Normalise date
     if "date" in parsed and parsed["date"]:
         parsed["date"] = validate_date_not_future(parse_date_safe(str(parsed["date"])))
     else:
         from app.dates import get_today
         parsed["date"] = get_today()
+
+    if not parsed.get("category"):
+        parsed["category"] = "Other"
+
+    # Normalize amount: clean string currency / commas if present
+    raw_amount = parsed.get("amount")
+    if isinstance(raw_amount, str):
+        cleaned = re.sub(r"[^\d.]", "", raw_amount)
+        try:
+            parsed["amount"] = float(cleaned) if cleaned else None
+        except (ValueError, TypeError):
+            parsed["amount"] = None
+
+    # If amount is None or <= 0, try regex search in ocr_text as fallback
+    if (parsed.get("amount") is None or (isinstance(parsed.get("amount"), (int, float)) and parsed["amount"] <= 0)) and ocr_text:
+        patterns = [
+            r"(?i)(?:total|grand\s*total|amount\s*payable|amount\s*due|net\s*amount|balance\s*due|final\s*amount)[\s:=-]+(?:rs\.?|inr|₹|\$|€|£)?\s*([\d,]+(?:\.\d{1,2})?)",
+            r"(?i)(?:rs\.?|inr|₹|\$)\s*([\d,]+(?:\.\d{1,2})?)",
+        ]
+        for pattern in patterns:
+            match = re.search(pattern, ocr_text)
+            if match:
+                val_str = match.group(1).replace(",", "")
+                try:
+                    val = float(val_str)
+                    if val > 0:
+                        parsed["amount"] = val
+                        break
+                except (ValueError, TypeError):
+                    pass
 
     try:
         return AIExpenseExtraction(**parsed)

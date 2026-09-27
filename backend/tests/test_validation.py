@@ -44,6 +44,18 @@ class TestAIExpenseExtraction:
                 amount=0, category="Food", date="2026-09-26"
             )
 
+    def test_none_amount_allowed(self):
+        data = AIExpenseExtraction(
+            amount=None, category="Food", date="2026-09-26"
+        )
+        assert data.amount is None
+
+    def test_amount_currency_string_cleaned(self):
+        data = AIExpenseExtraction(
+            amount="₹ 1,500.50", category="Food", date="2026-09-26"
+        )
+        assert data.amount == 1500.50
+
     def test_category_case_insensitive(self):
         data = AIExpenseExtraction(
             amount=100, category="food", date="2026-09-26"

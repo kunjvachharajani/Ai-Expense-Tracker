@@ -43,3 +43,38 @@ def test_validate_extraction_dict():
     assert extraction.amount == 420.50
     assert extraction.merchant == "Pizza Hut"
     assert extraction.date == "2026-09-25"
+
+
+def test_validate_extraction_dict_with_none_amount():
+    raw_dict = {
+        "amount": None,
+        "category": "Food",
+        "merchant": "Cafe",
+        "date": "2026-09-25",
+    }
+    extraction = _validate_extraction_dict(raw_dict)
+    assert extraction.amount is None
+    assert extraction.merchant == "Cafe"
+
+
+def test_validate_extraction_dict_with_ocr_recovery():
+    raw_dict = {
+        "amount": None,
+        "category": "Food",
+        "merchant": "Dominos",
+        "date": "2026-09-25",
+    }
+    ocr = "Dominos Pizza\n1x Pepperoni\nSubtotal: 300\nTax: 50\nTotal: 350.00\nThank you"
+    extraction = _validate_extraction_dict(raw_dict, ocr_text=ocr)
+    assert extraction.amount == 350.00
+    assert extraction.merchant == "Dominos"
+
+
+def test_validate_extraction_dict_with_currency_string():
+    raw_dict = {
+        "amount": "₹ 1,250.50",
+        "category": "Shopping",
+        "date": "2026-09-25",
+    }
+    extraction = _validate_extraction_dict(raw_dict)
+    assert extraction.amount == 1250.50

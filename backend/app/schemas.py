@@ -40,18 +40,36 @@ class BudgetResponse(BaseModel):
 
 class AIExpenseExtraction(BaseModel):
     """Schema for AI-extracted expense data — not yet saved."""
-    amount: float = Field(..., gt=0, description="Expense amount")
+    amount: Optional[float] = Field(default=None, gt=0, description="Expense amount")
     currency: str = Field(default="INR")
-    category: str = Field(..., description="Must be from allowed list")
+    category: str = Field(default="Other", description="Must be from allowed list")
     subcategory: Optional[str] = None
     merchant: Optional[str] = None
     description: Optional[str] = None
     date: str = Field(..., description="YYYY-MM-DD format")
     payment_method: Optional[str] = "Unknown"
 
+    @field_validator("amount", mode="before")
+    @classmethod
+    def validate_amount(cls, v):
+        if v is None or v == "" or v == "null" or v == "None":
+            return None
+        if isinstance(v, str):
+            import re
+            cleaned = re.sub(r"[^\d.]", "", v)
+            if not cleaned:
+                return None
+            try:
+                return float(cleaned)
+            except (ValueError, TypeError):
+                return None
+        return v
+
     @field_validator("category")
     @classmethod
-    def validate_category(cls, v: str) -> str:
+    def validate_category(cls, v: Optional[str]) -> str:
+        if not v:
+            return "Other"
         if v not in CATEGORY_LIST:
             # Try case-insensitive match
             for cat in CATEGORY_LIST:
