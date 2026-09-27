@@ -39,8 +39,8 @@ async def extract_text_from_image(image_bytes: bytes, filename: str) -> str:
     if not settings.OCR_SPACE_API_KEY:
         raise ValueError("OCR service is not configured.")
 
-    # Determine content type and compress image if needed (OCR.space free limit is 1MB)
-    if ext != "pdf" and len(image_bytes) > 900 * 1024:
+    # Determine content type and compress/normalize image for fastest OCR processing
+    if ext != "pdf":
         try:
             import io
             from PIL import Image
@@ -48,17 +48,16 @@ async def extract_text_from_image(image_bytes: bytes, filename: str) -> str:
             if im.mode in ("RGBA", "P", "LA"):
                 im = im.convert("RGB")
             
-            # Resize if dimensions are very large
-            max_dim = 1600
+            # 1200px is the optimal resolution for OCR: keeps file under 200KB while crystal clear
+            max_dim = 1200
             if max(im.size) > max_dim:
                 im.thumbnail((max_dim, max_dim), Image.Resampling.LANCZOS)
             
             buf = io.BytesIO()
-            im.save(buf, format="JPEG", quality=80, optimize=True)
-            if len(buf.getvalue()) < len(image_bytes):
-                image_bytes = buf.getvalue()
-                ext = "jpg"
-                filename = f"{filename.rsplit('.', 1)[0]}.jpg"
+            im.save(buf, format="JPEG", quality=82, optimize=True)
+            image_bytes = buf.getvalue()
+            ext = "jpg"
+            filename = f"{filename.rsplit('.', 1)[0]}.jpg"
         except Exception as comp_err:
             logger.warning(f"Failed to compress image before OCR: {comp_err}")
 
@@ -75,9 +74,9 @@ async def extract_text_from_image(image_bytes: bytes, filename: str) -> str:
 
     import asyncio
     resp = None
-    engines = ["1", "2"]  # Engine 1 is fast (~2s), Engine 2 is secondary
+    engines = ["1", "2"]  # Engine 1 is fastest (~1-2s), Engine 2 is secondary
 
-    async with httpx.AsyncClient(timeout=20.0) as client:
+    async with httpx.AsyncClient(timeout=9.0) as client:
         for engine in engines:
             try:
                 resp = await client.post(
@@ -86,6 +85,8 @@ async def extract_text_from_image(image_bytes: bytes, filename: str) -> str:
                         "apikey": settings.OCR_SPACE_API_KEY,
                         "language": "eng",
                         "isOverlayRequired": "false",
+                        "detectOrientation": "true",
+                        "scale": "true",
                         "filetype": filetype_param,
                         "OCREngine": engine,
                     },
@@ -104,7 +105,7 @@ async def extract_text_from_image(image_bytes: bytes, filename: str) -> str:
                             return text
             except (httpx.HTTPStatusError, httpx.RequestError) as e:
                 logger.warning(f"OCR.space Engine {engine} attempt failed: {e}")
-                await asyncio.sleep(0.5)
+                await asyncio.sleep(0.3)
 
     if resp:
         try:

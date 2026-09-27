@@ -4,6 +4,7 @@ Receipt scanning API route.
 import logging
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 
+from app.config import settings
 from app.api.auth import get_current_user
 from app.services.ocr_service import extract_text_from_image
 from app.services.groq_service import parse_receipt_image, parse_receipt_text
@@ -54,7 +55,7 @@ async def scan_receipt(
     ocr_text = ""
 
     # Primary strategy: Groq Multimodal Vision (if a vision model is configured)
-    if settings.GROQ_VISION_MODEL:
+    if getattr(settings, "GROQ_VISION_MODEL", None):
         try:
             extraction, ocr_text = await parse_receipt_image(
                 image_bytes=image_bytes,
@@ -62,9 +63,9 @@ async def scan_receipt(
                 content_type=content_type,
             )
         except Exception as vision_err:
-            logger.warning(f"Groq Vision extraction failed, falling back to OCR.space: {vision_err}")
+            logger.warning(f"Groq Vision extraction failed, falling back to OCR: {vision_err}")
 
-    # Fallback strategy: OCR.space text extraction + Groq text parsing
+    # Fallback strategy: OCR text extraction + Groq text parsing
     if extraction is None:
         try:
             ocr_text = await extract_text_from_image(image_bytes, filename)
@@ -72,7 +73,7 @@ async def scan_receipt(
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
         except Exception as e:
-            logger.error(f"Receipt extraction failed: {e}")
+            logger.error(f"Receipt extraction failed: {e}", exc_info=True)
             raise HTTPException(
                 status_code=500,
                 detail="Unable to process receipt image. Please enter expense details manually or try another image.",

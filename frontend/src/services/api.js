@@ -129,24 +129,33 @@ export async function deleteExpense(id) {
 
 // ---------- Receipts ----------
 
-export async function scanReceipt(file, retries = 2) {
+export async function scanReceipt(file, retries = 1) {
   const headers = await getAuthHeaders();
   const formData = new FormData();
   formData.append('file', file);
 
   let res;
   for (let attempt = 0; attempt <= retries; attempt++) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 18000);
+
     try {
       res = await fetch(`${API_URL}/api/receipts/scan`, {
         method: 'POST',
         headers,
         body: formData,
+        signal: controller.signal,
       });
+      clearTimeout(timeoutId);
       break;
     } catch (err) {
+      clearTimeout(timeoutId);
+      if (err.name === 'AbortError') {
+        throw new Error('Scanning took longer than expected. Please ensure receipt is well-lit and clear.');
+      }
       if (err.name === 'TypeError' && err.message.includes('fetch')) {
         if (attempt < retries) {
-          await sleep(2000);
+          await sleep(1500);
           continue;
         }
         throw new Error(getUnreachableMessage());

@@ -267,7 +267,7 @@ async def _call_groq_raw(payload: dict) -> str:
         "Content-Type": "application/json",
     }
 
-    async with httpx.AsyncClient(timeout=45.0) as client:
+    async with httpx.AsyncClient(timeout=15.0) as client:
         try:
             resp = await client.post(GROQ_API_URL, json=payload, headers=headers)
             resp.raise_for_status()

@@ -5,11 +5,64 @@ import { Upload, Camera, FileText, X, Sparkles } from 'lucide-react';
 import { scanReceipt, createExpense } from '../services/api';
 import ConfirmExpenseModal from '../components/ConfirmExpenseModal';
 
+async function prepareReceiptFile(rawFile) {
+  if (rawFile.type === 'application/pdf' || rawFile.name.toLowerCase().endsWith('.pdf')) {
+    return rawFile;
+  }
+
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        const maxDim = 1200;
+        let { width, height } = img;
+        if (width > maxDim || height > maxDim) {
+          if (width > height) {
+            height = Math.round((height * maxDim) / width);
+            width = maxDim;
+          } else {
+            width = Math.round((width * maxDim) / height);
+            height = maxDim;
+          }
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillRect(0, 0, width, height);
+        ctx.drawImage(img, 0, 0, width, height);
+
+        canvas.toBlob(
+          (blob) => {
+            if (!blob) {
+              resolve(rawFile);
+              return;
+            }
+            const cleanName = rawFile.name.replace(/\.[^/.]+$/, '') + '.jpg';
+            const compressed = new File([blob], cleanName, { type: 'image/jpeg' });
+            resolve(compressed);
+          },
+          'image/jpeg',
+          0.82
+        );
+      };
+      img.onerror = () => resolve(rawFile);
+      img.src = e.target.result;
+    };
+    reader.onerror = () => resolve(rawFile);
+    reader.readAsDataURL(rawFile);
+  });
+}
+
 export default function ScanReceipt() {
   const navigate = useNavigate();
   const [file, setFile] = useState(null);
   const [preview, setPreview] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [scanStatus, setScanStatus] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -29,13 +82,13 @@ export default function ScanReceipt() {
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
-    accept: { 'image/*': ['.jpg', '.jpeg', '.png', '.gif', '.bmp'], 'application/pdf': ['.pdf'] },
-    maxSize: 5 * 1024 * 1024,
+    accept: { 'image/*': ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp'], 'application/pdf': ['.pdf'] },
+    maxSize: 10 * 1024 * 1024,
     multiple: false,
     onDropRejected: (rejections) => {
       const err = rejections[0]?.errors[0];
-      if (err?.code === 'file-too-large') setError('File too large. Maximum 5 MB.');
-      else setError('Unsupported file type. Use JPG, PNG, or PDF.');
+      if (err?.code === 'file-too-large') setError('File too large. Maximum 10 MB.');
+      else setError('Unsupported file type. Use JPG, PNG, WebP, or PDF.');
     },
   });
 
@@ -44,15 +97,19 @@ export default function ScanReceipt() {
     setError('');
     setExtraction(null);
     setLoading(true);
+    setScanStatus('Optimizing receipt image...');
 
     try {
-      const result = await scanReceipt(file);
+      const readyFile = await prepareReceiptFile(file);
+      setScanStatus('Scanning receipt with AI...');
+      const result = await scanReceipt(readyFile);
       setExtraction(result.extraction);
       setOcrText(result.ocr_text || '');
     } catch (err) {
       setError(err.message || 'Failed to scan receipt.');
     } finally {
       setLoading(false);
+      setScanStatus('');
     }
   };
 
@@ -116,7 +173,7 @@ export default function ScanReceipt() {
 
             <div style={{ marginTop: 16, display: 'flex', gap: 10 }}>
               <button className="btn btn-primary btn-lg" onClick={handleScan} disabled={loading}>
-                {loading ? <><span className="loading-spinner" /> Scanning...</> : <><Sparkles size={18} /> Scan Receipt</>}
+                {loading ? <><span className="loading-spinner" /> {scanStatus || 'Scanning...'}</> : <><Sparkles size={18} /> Scan Receipt</>}
               </button>
               <button className="btn btn-secondary" onClick={clearFile} disabled={loading}>Change File</button>
             </div>
