@@ -4,8 +4,12 @@
  */
 import { supabase } from './supabaseClient';
 
-const API_URL = import.meta.env.VITE_API_URL !== undefined
-  ? import.meta.env.VITE_API_URL
+const rawApiUrl = (import.meta.env.VITE_API_URL || '').trim();
+// Automatically discard defunct onrender.com URLs
+const isDefunctUrl = rawApiUrl.includes('onrender.com');
+
+const API_URL = (rawApiUrl && !isDefunctUrl)
+  ? rawApiUrl.replace(/\/+$/, '')
   : (import.meta.env.DEV ? 'http://localhost:8000' : '');
 
 async function getAuthHeaders() {
@@ -17,6 +21,30 @@ async function getAuthHeaders() {
 }
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function parseResponseData(res) {
+  const contentType = res.headers.get('content-type') || '';
+  if (contentType.includes('application/json')) {
+    try {
+      return await res.json();
+    } catch {
+      // Fall through to text parsing
+    }
+  }
+  const text = await res.text();
+  try {
+    return JSON.parse(text);
+  } catch {
+    return { detail: text || res.statusText || 'An unexpected error occurred' };
+  }
+}
+
+function getUnreachableMessage() {
+  if (import.meta.env.DEV && (API_URL.includes('localhost') || API_URL.includes('127.0.0.1'))) {
+    return 'Backend server is not running on http://localhost:8000. Please start your local backend (e.g. run uvicorn app.main:app --reload in the backend folder).';
+  }
+  return 'Backend server is waking up or unreachable. Please wait a few seconds and try again.';
+}
 
 async function request(path, options = {}, retries = 2) {
   const headers = await getAuthHeaders();
@@ -35,13 +63,10 @@ async function request(path, options = {}, retries = 2) {
     } catch (err) {
       if (err.name === 'TypeError' && err.message.includes('fetch')) {
         if (attempt < retries) {
-          // Wait 2.5s before retrying (gives Render cold-starts time to wake up)
-          await sleep(2500);
+          await sleep(2000);
           continue;
         }
-        throw new Error(
-          `Backend server is waking up or unreachable (${API_URL}). Please wait a few seconds and try again.`
-        );
+        throw new Error(getUnreachableMessage());
       }
       throw err;
     }
@@ -49,7 +74,7 @@ async function request(path, options = {}, retries = 2) {
 
   if (res.status === 204) return null;
 
-  const data = await res.json();
+  const data = await parseResponseData(res);
 
   if (!res.ok) {
     throw new Error(data.detail || 'Something went wrong');
@@ -121,18 +146,16 @@ export async function scanReceipt(file, retries = 2) {
     } catch (err) {
       if (err.name === 'TypeError' && err.message.includes('fetch')) {
         if (attempt < retries) {
-          await sleep(2500);
+          await sleep(2000);
           continue;
         }
-        throw new Error(
-          `Backend server is waking up or unreachable (${API_URL}). Please wait a few seconds and try again.`
-        );
+        throw new Error(getUnreachableMessage());
       }
       throw err;
     }
   }
 
-  const data = await res.json();
+  const data = await parseResponseData(res);
   if (!res.ok) throw new Error(data.detail || 'Failed to scan receipt');
   return data;
 }
@@ -191,5 +214,5 @@ export async function getCategories() {
 
 export async function healthCheck() {
   const res = await fetch(`${API_URL}/api/health`);
-  return res.json();
+  return parseResponseData(res);
 }

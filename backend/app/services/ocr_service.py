@@ -15,15 +15,31 @@ OCR_SPACE_URL = "https://api.ocr.space/parse/image"
 
 async def extract_text_from_image(image_bytes: bytes, filename: str) -> str:
     """
-    Send image bytes to OCR.space and return the parsed text.
+    Extract text from image or PDF bytes.
+    1. If PDF has digital text, extract directly via PyMuPDF (instant).
+    2. Otherwise, send to OCR.space with automatic compression and fast engine.
     Raises ValueError on failure.
     """
+    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else "jpg"
+
+    # Fast-path for PDF: extract embedded text directly if present
+    if ext == "pdf":
+        try:
+            import pymupdf
+            doc = pymupdf.open(stream=image_bytes, filetype="pdf")
+            direct_text = ""
+            for page in doc:
+                direct_text += page.get_text() + "\n"
+            if len(direct_text.strip()) >= 15:
+                logger.info("Successfully extracted text directly from PDF without OCR.")
+                return direct_text.strip()
+        except Exception as pdf_err:
+            logger.warning(f"Direct PDF text extraction failed: {pdf_err}")
+
     if not settings.OCR_SPACE_API_KEY:
         raise ValueError("OCR service is not configured.")
 
     # Determine content type and compress image if needed (OCR.space free limit is 1MB)
-    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else "jpg"
-    
     if ext != "pdf" and len(image_bytes) > 900 * 1024:
         try:
             import io
@@ -55,13 +71,14 @@ async def extract_text_from_image(image_bytes: bytes, filename: str) -> str:
         "pdf": "application/pdf",
     }
     content_type = content_type_map.get(ext, "image/jpeg")
+    filetype_param = ext.upper() if ext in ("jpg", "jpeg", "png", "gif", "bmp", "pdf") else "JPG"
 
     import asyncio
-    max_retries = 2
-    last_err = None
+    resp = None
+    engines = ["1", "2"]  # Engine 1 is fast (~2s), Engine 2 is secondary
 
-    async with httpx.AsyncClient(timeout=60.0) as client:
-        for attempt in range(max_retries):
+    async with httpx.AsyncClient(timeout=20.0) as client:
+        for engine in engines:
             try:
                 resp = await client.post(
                     OCR_SPACE_URL,
@@ -69,49 +86,33 @@ async def extract_text_from_image(image_bytes: bytes, filename: str) -> str:
                         "apikey": settings.OCR_SPACE_API_KEY,
                         "language": "eng",
                         "isOverlayRequired": "false",
-                        "detectOrientation": "true",
-                        "scale": "true",
-                        "OCREngine": "2",  # Engine 2 is better for receipts
+                        "filetype": filetype_param,
+                        "OCREngine": engine,
                     },
                     files={
                         "file": (filename, image_bytes, content_type),
                     },
                 )
                 resp.raise_for_status()
-                break
-            except httpx.HTTPStatusError as e:
-                last_err = e
-                logger.warning(
-                    f"OCR.space HTTP error {e.response.status_code} (attempt {attempt + 1}/{max_retries}): {e.response.text}"
-                )
-                if e.response.status_code in (429, 503) and attempt < max_retries - 1:
-                    await asyncio.sleep(1.5)
-                    continue
-                if e.response.status_code in (429, 503):
-                    raise ValueError("OCR service is currently overloaded. Please try again in a few moments.")
-                raise ValueError(f"OCR service returned an error ({e.response.status_code}). Please try again.")
-            except httpx.RequestError as e:
-                last_err = e
-                logger.warning(f"OCR.space request error (attempt {attempt + 1}/{max_retries}): {e}")
-                if attempt < max_retries - 1:
-                    await asyncio.sleep(1.0)
-                    continue
-                raise ValueError("OCR service is temporarily unavailable. Please try again.")
+                data = resp.json()
 
-    data = resp.json()
+                if not data.get("IsErroredOnProcessing"):
+                    parsed_results = data.get("ParsedResults", [])
+                    if parsed_results:
+                        text = parsed_results[0].get("ParsedText", "").strip()
+                        if text and len(text) >= 5:
+                            return text
+            except (httpx.HTTPStatusError, httpx.RequestError) as e:
+                logger.warning(f"OCR.space Engine {engine} attempt failed: {e}")
+                await asyncio.sleep(0.5)
 
-    # Check for OCR errors
-    if data.get("IsErroredOnProcessing"):
-        error_msg = data.get("ErrorMessage", ["Unknown OCR error"])
-        logger.error(f"OCR.space processing error: {error_msg}")
-        raise ValueError("Unable to read this receipt. Please upload a clearer image.")
+    if resp:
+        try:
+            data = resp.json()
+            if data.get("IsErroredOnProcessing"):
+                error_msg = data.get("ErrorMessage", ["Unable to read receipt"])
+                logger.error(f"OCR.space error: {error_msg}")
+        except Exception:
+            pass
 
-    parsed_results = data.get("ParsedResults", [])
-    if not parsed_results:
-        raise ValueError("No text detected in the image. Please upload a clearer receipt photo.")
-
-    text = parsed_results[0].get("ParsedText", "").strip()
-    if not text or len(text) < 5:
-        raise ValueError("Very little text detected. Please upload a clearer receipt image.")
-
-    return text
+    raise ValueError("Unable to read text from this receipt image. Please upload a clearer photo or enter details manually.")
