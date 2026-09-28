@@ -28,42 +28,61 @@ async def scan_receipt(
     user: dict = Depends(get_current_user),
 ):
     """
-    1. Receive receipt image or PDF
-    2. Primary: Fast & accurate multimodal Groq Vision (understands layout, tables, totals)
-    3. Fallback: OCR.space text extraction + Groq LLM parsing
-    4. Return structured data + raw OCR text for user confirmation
+    Scan receipt image or PDF:
+    1. Primary: Fast multimodal Groq Vision (understands layout, tables, totals)
+    2. Fallback: OCR.space text extraction + Groq LLM parsing
+    3. Final Safety Fallback: Returns a draft expense form so the user can enter details manually without any 400/500 error.
     """
+    from datetime import date
+    import io
+    from PIL import Image
+
     filename = file.filename or "receipt.jpg"
-    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else "jpg"
     content_type = (file.content_type or "").lower().strip()
 
-    # Validate file type via MIME or extension
-    is_valid_type = (
-        content_type in ALLOWED_TYPES or
-        content_type.startswith("image/") or
-        ext in ALLOWED_EXTENSIONS
-    )
-    if not is_valid_type:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Unsupported file type: '{content_type or ext}'. Please upload JPG, PNG, WebP, or PDF.",
-        )
+    # Read file bytes safely
+    try:
+        image_bytes = await file.read()
+    except Exception as e:
+        logger.error(f"Failed to read uploaded file: {e}")
+        image_bytes = b""
 
-    # Read file
-    image_bytes = await file.read()
-
-    # Validate size
-    if len(image_bytes) > MAX_FILE_SIZE:
-        raise HTTPException(
-            status_code=400,
-            detail="File too large. Maximum size is 15 MB.",
-        )
-
+    # Graceful handling for empty file
     if len(image_bytes) == 0:
-        raise HTTPException(status_code=400, detail="Empty file uploaded.")
+        fallback = AIExpenseExtraction(
+            amount=None,
+            currency="INR",
+            category="Other",
+            subcategory=None,
+            merchant=None,
+            description="Scanned Receipt",
+            date=date.today().isoformat(),
+            payment_method="Unknown",
+        )
+        return {
+            "extraction": fallback.model_dump(),
+            "ocr_text": "",
+            "warning": "Empty file received. Please upload or capture a receipt photo.",
+        }
 
-    # Normalize content_type if missing or octet-stream
-    if not content_type or content_type == "application/octet-stream":
+    # Automatically compress / resize if file is very large
+    if len(image_bytes) > MAX_FILE_SIZE:
+        try:
+            im = Image.open(io.BytesIO(image_bytes))
+            if im.mode in ("RGBA", "P", "LA"):
+                im = im.convert("RGB")
+            im.thumbnail((1200, 1200), Image.Resampling.LANCZOS)
+            buf = io.BytesIO()
+            im.save(buf, format="JPEG", quality=80)
+            image_bytes = buf.getvalue()
+            content_type = "image/jpeg"
+            filename = "receipt.jpg"
+        except Exception as comp_err:
+            logger.warning(f"Could not resize oversized image: {comp_err}")
+
+    # Normalize content_type
+    if not content_type or content_type == "application/octet-stream" or not content_type.startswith("image/"):
         content_type_map = {
             "jpg": "image/jpeg",
             "jpeg": "image/jpeg",
@@ -75,9 +94,10 @@ async def scan_receipt(
 
     extraction = None
     ocr_text = ""
+    warning_msg = None
 
-    # Primary strategy: Groq Multimodal Vision (if a vision model is configured)
-    if getattr(settings, "GROQ_VISION_MODEL", None):
+    # Primary strategy: Groq Multimodal Vision
+    if getattr(settings, "GROQ_VISION_MODEL", None) and getattr(settings, "GROQ_API_KEY", None):
         try:
             extraction, ocr_text = await parse_receipt_image(
                 image_bytes=image_bytes,
@@ -92,16 +112,24 @@ async def scan_receipt(
         try:
             ocr_text = await extract_text_from_image(image_bytes, filename)
             extraction = await parse_receipt_text(ocr_text)
-        except ValueError as e:
-            raise HTTPException(status_code=400, detail=str(e))
-        except Exception as e:
-            logger.error(f"Receipt extraction failed: {e}", exc_info=True)
-            raise HTTPException(
-                status_code=500,
-                detail="Unable to process receipt image. Please enter expense details manually or try another image.",
+        except Exception as ocr_err:
+            logger.warning(f"Receipt OCR extraction could not read text ({ocr_err}). Providing draft template.")
+            # Final graceful fallback: return empty template so user can confirm and save without error
+            extraction = AIExpenseExtraction(
+                amount=None,
+                currency="INR",
+                category="Other",
+                subcategory=None,
+                merchant=None,
+                description="Scanned Receipt",
+                date=date.today().isoformat(),
+                payment_method="Unknown",
             )
+            ocr_text = ""
+            warning_msg = "Could not automatically read details from this receipt photo. Please verify and enter the amount and merchant below."
 
     return {
         "extraction": extraction.model_dump(),
         "ocr_text": ocr_text,
+        "warning": warning_msg,
     }

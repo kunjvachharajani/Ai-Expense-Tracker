@@ -103,7 +103,10 @@ export default function ScanReceipt() {
       const readyFile = await prepareReceiptFile(file);
       setScanStatus('Scanning receipt with AI...');
       const result = await scanReceipt(readyFile);
-      setExtraction(result.extraction);
+      setExtraction({
+        ...(result.extraction || {}),
+        warning: result.warning,
+      });
       setOcrText(result.ocr_text || '');
     } catch (err) {
       setError(err.message || 'Failed to scan receipt.');

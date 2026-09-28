@@ -37,9 +37,13 @@ export default function ConfirmExpenseModal({ data, onConfirm, onCancel, loading
   };
 
   const handleSubmit = () => {
+    const amt = parseFloat(form.amount);
+    if (!amt || isNaN(amt) || amt <= 0) {
+      return;
+    }
     onConfirm({
       ...form,
-      amount: parseFloat(form.amount),
+      amount: amt,
       source: source || 'manual',
     });
   };
@@ -55,8 +59,8 @@ export default function ConfirmExpenseModal({ data, onConfirm, onCancel, loading
           <button className="btn btn-icon" onClick={onCancel}><X size={20} /></button>
         </div>
 
-        <div className="alert alert-info" style={{ marginBottom: 20 }}>
-          AI extracted this data. Please review before saving.
+        <div className={`alert ${data?.warning ? 'alert-warning' : 'alert-info'}`} style={{ marginBottom: 20 }}>
+          {data?.warning || 'AI extracted this data. Please review before saving.'}
         </div>
 
         <div className="extraction-result" style={{ background: 'white', border: '1px solid var(--border)' }}>
