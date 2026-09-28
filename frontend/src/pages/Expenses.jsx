@@ -12,6 +12,16 @@ const PAYMENT_METHODS = [
   'Cash', 'UPI', 'Credit Card', 'Debit Card', 'Bank Transfer', 'Other', 'Unknown'
 ];
 
+const formatLocalDate = (dateStr, options = { day: 'numeric', month: 'short', year: 'numeric' }) => {
+  if (!dateStr) return '—';
+  const parts = dateStr.split('T')[0].split('-');
+  if (parts.length === 3) {
+    const [y, m, d] = parts.map(Number);
+    return new Date(y, m - 1, d).toLocaleDateString('en-IN', options);
+  }
+  return new Date(dateStr).toLocaleDateString('en-IN', options);
+};
+
 export default function Expenses() {
   const [expenses, setExpenses] = useState([]);
   const [total, setTotal] = useState(0);
@@ -26,6 +36,7 @@ export default function Expenses() {
   const [paymentFilter, setPaymentFilter] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+  const [periodFilter, setPeriodFilter] = useState('all');
   const [sortBy, setSortBy] = useState('expense_date');
   const [sortOrder, setSortOrder] = useState('desc');
 
@@ -38,6 +49,36 @@ export default function Expenses() {
   useEffect(() => {
     loadExpenses();
   }, [page, categoryFilter, paymentFilter, startDate, endDate, sortBy, sortOrder]);
+
+  const handleQuickPeriod = (key) => {
+    setPeriodFilter(key);
+    setPage(1);
+    const now = new Date();
+    const pad = (n) => String(n).padStart(2, '0');
+    const toDateStr = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+
+    if (key === 'all') {
+      setStartDate('');
+      setEndDate('');
+    } else if (key === 'week') {
+      const day = now.getDay();
+      const diffToMon = day === 0 ? -6 : 1 - day;
+      const mon = new Date(now.getFullYear(), now.getMonth(), now.getDate() + diffToMon);
+      const sun = new Date(mon.getFullYear(), mon.getMonth(), mon.getDate() + 6);
+      setStartDate(toDateStr(mon));
+      setEndDate(toDateStr(sun));
+    } else if (key === 'month') {
+      const first = new Date(now.getFullYear(), now.getMonth(), 1);
+      const last = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+      setStartDate(toDateStr(first));
+      setEndDate(toDateStr(last));
+    } else if (key === 'last_month') {
+      const first = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      const last = new Date(now.getFullYear(), now.getMonth(), 0);
+      setStartDate(toDateStr(first));
+      setEndDate(toDateStr(last));
+    }
+  };
 
   const loadExpenses = async () => {
     setLoading(true);
@@ -89,6 +130,25 @@ export default function Expenses() {
 
   return (
     <div>
+      {/* Quick period filter tabs */}
+      <div className="tabs" style={{ marginBottom: 16 }}>
+        {[
+          { key: 'all', label: 'All Time' },
+          { key: 'week', label: 'This Week' },
+          { key: 'month', label: 'This Month' },
+          { key: 'last_month', label: 'Last Month' },
+        ].map(t => (
+          <button
+            key={t.key}
+            type="button"
+            className={`tab ${periodFilter === t.key ? 'active' : ''}`}
+            onClick={() => handleQuickPeriod(t.key)}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
       {/* Filters */}
       <form className="filters-bar" onSubmit={handleSearch}>
         <input className="form-input search-input" placeholder="Search expenses..." value={search} onChange={e => setSearch(e.target.value)} />
@@ -100,8 +160,8 @@ export default function Expenses() {
           <option value="">All Payments</option>
           {PAYMENT_METHODS.map(p => <option key={p} value={p}>{p}</option>)}
         </select>
-        <input type="date" className="form-input" value={startDate} onChange={e => { setStartDate(e.target.value); setPage(1); }} />
-        <input type="date" className="form-input" value={endDate} onChange={e => { setEndDate(e.target.value); setPage(1); }} />
+        <input type="date" className="form-input" value={startDate} onChange={e => { setStartDate(e.target.value); setPeriodFilter('custom'); setPage(1); }} />
+        <input type="date" className="form-input" value={endDate} onChange={e => { setEndDate(e.target.value); setPeriodFilter('custom'); setPage(1); }} />
         <button type="submit" className="btn btn-primary btn-sm"><Search size={16} /> Search</button>
       </form>
 
@@ -140,7 +200,7 @@ export default function Expenses() {
                 <tbody>
                   {expenses.map(exp => (
                     <tr key={exp.id}>
-                      <td>{new Date(exp.expense_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</td>
+                      <td>{formatLocalDate(exp.expense_date)}</td>
                       <td>{exp.merchant || '—'}</td>
                       <td style={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{exp.description || '—'}</td>
                       <td><span className={`badge badge-${exp.category?.toLowerCase().replace(/\s+/g, '')}`}>{exp.category}</span></td>
@@ -184,7 +244,7 @@ export default function Expenses() {
                 ['Merchant', viewExpense.merchant || 'Unknown'],
                 ['Category', viewExpense.category],
                 ['Subcategory', viewExpense.subcategory || '—'],
-                ['Date', new Date(viewExpense.expense_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })],
+                ['Date', formatLocalDate(viewExpense.expense_date, { day: 'numeric', month: 'long', year: 'numeric' })],
                 ['Description', viewExpense.description || '—'],
                 ['Payment', viewExpense.payment_method || '—'],
                 ['Source', viewExpense.source === 'natural_language' ? 'AI Extracted' : viewExpense.source === 'receipt' ? 'Receipt Scan' : 'Manually Added'],

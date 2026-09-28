@@ -17,6 +17,16 @@ const PERIODS = [
   { key: 'year', label: 'This Year' },
 ];
 
+const formatLocalDate = (dateStr, options = { day: 'numeric', month: 'short' }) => {
+  if (!dateStr) return '—';
+  const parts = dateStr.split('T')[0].split('-');
+  if (parts.length === 3) {
+    const [y, m, d] = parts.map(Number);
+    return new Date(y, m - 1, d).toLocaleDateString('en-IN', options);
+  }
+  return new Date(dateStr).toLocaleDateString('en-IN', options);
+};
+
 export default function Analytics() {
   const [period, setPeriod] = useState('month');
   const [data, setData] = useState(null);
@@ -46,10 +56,12 @@ export default function Analytics() {
     name, value: Math.round(value), fill: CATEGORY_COLORS[name] || '#6b7280',
   })).sort((a, b) => b.value - a.value) : [];
 
-  const dailyData = data ? Object.entries(data.daily_trend || {}).sort().map(([date, amount]) => ({
-    date: new Date(date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }),
-    amount: Math.round(amount),
-  })) : [];
+  const dailyData = data ? Object.entries(data.daily_trend || {})
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([date, amount]) => ({
+      date: formatLocalDate(date),
+      amount: Math.round(amount),
+    })) : [];
 
   const formatCurrency = (v) => `₹${Number(v).toLocaleString('en-IN')}`;
 

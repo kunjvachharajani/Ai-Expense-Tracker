@@ -137,7 +137,7 @@ export async function scanReceipt(file, retries = 1) {
   let res;
   for (let attempt = 0; attempt <= retries; attempt++) {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 18000);
+    const timeoutId = setTimeout(() => controller.abort(), 25000);
 
     try {
       res = await fetch(`${API_URL}/api/receipts/scan`, {
@@ -178,8 +178,12 @@ export async function getAnalyticsSummary(period = 'month', startDate, endDate) 
   return request(`/api/analytics/summary?${params.toString()}`);
 }
 
-export async function getRecentExpenses(limit = 10) {
-  return request(`/api/analytics/recent?limit=${limit}`);
+export async function getRecentExpenses(limit = 10, period, startDate, endDate) {
+  const params = new URLSearchParams({ limit });
+  if (period) params.set('period', period);
+  if (startDate) params.set('start_date', startDate);
+  if (endDate) params.set('end_date', endDate);
+  return request(`/api/analytics/recent?${params.toString()}`);
 }
 
 export async function getAISummary() {

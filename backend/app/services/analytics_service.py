@@ -73,13 +73,26 @@ def get_summary(user_id: str, start_date: str, end_date: str) -> dict:
     }
 
 
-def get_recent_expenses(user_id: str, limit: int = 10) -> list[dict]:
-    """Get the most recent expenses."""
+def get_recent_expenses(
+    user_id: str,
+    limit: int = 10,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+) -> list[dict]:
+    """Get the most recent expenses, optionally filtered by date range."""
     sb = get_supabase_client()
-    result = (
+    query = (
         sb.table("expenses")
         .select("*")
         .eq("user_id", user_id)
+    )
+    if start_date:
+        query = query.gte("expense_date", start_date)
+    if end_date:
+        query = query.lte("expense_date", end_date)
+
+    result = (
+        query
         .order("expense_date", desc=True)
         .order("created_at", desc=True)
         .limit(limit)

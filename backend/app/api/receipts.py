@@ -13,8 +13,13 @@ from app.schemas import AIExpenseExtraction
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/receipts", tags=["Receipts"])
 
-MAX_FILE_SIZE = 5 * 1024 * 1024  # 5 MB
-ALLOWED_TYPES = {"image/jpeg", "image/png", "image/gif", "image/bmp", "image/webp", "application/pdf"}
+MAX_FILE_SIZE = 15 * 1024 * 1024  # 15 MB
+ALLOWED_TYPES = {
+    "image/jpeg", "image/jpg", "image/png", "image/gif", "image/bmp",
+    "image/webp", "image/pjpeg", "image/x-png", "image/heic", "image/heif",
+    "application/pdf", "application/octet-stream",
+}
+ALLOWED_EXTENSIONS = {"jpg", "jpeg", "png", "gif", "bmp", "webp", "pdf", "heic", "heif"}
 
 
 @router.post("/scan", response_model=dict)
@@ -28,11 +33,20 @@ async def scan_receipt(
     3. Fallback: OCR.space text extraction + Groq LLM parsing
     4. Return structured data + raw OCR text for user confirmation
     """
-    # Validate file type
-    if file.content_type and file.content_type not in ALLOWED_TYPES:
+    filename = file.filename or "receipt.jpg"
+    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+    content_type = (file.content_type or "").lower().strip()
+
+    # Validate file type via MIME or extension
+    is_valid_type = (
+        content_type in ALLOWED_TYPES or
+        content_type.startswith("image/") or
+        ext in ALLOWED_EXTENSIONS
+    )
+    if not is_valid_type:
         raise HTTPException(
             status_code=400,
-            detail=f"Unsupported file type: {file.content_type}. Please upload JPG, PNG, WebP, or PDF.",
+            detail=f"Unsupported file type: '{content_type or ext}'. Please upload JPG, PNG, WebP, or PDF.",
         )
 
     # Read file
@@ -42,14 +56,22 @@ async def scan_receipt(
     if len(image_bytes) > MAX_FILE_SIZE:
         raise HTTPException(
             status_code=400,
-            detail="File too large. Maximum size is 5 MB.",
+            detail="File too large. Maximum size is 15 MB.",
         )
 
     if len(image_bytes) == 0:
         raise HTTPException(status_code=400, detail="Empty file uploaded.")
 
-    filename = file.filename or "receipt.jpg"
-    content_type = file.content_type or "image/jpeg"
+    # Normalize content_type if missing or octet-stream
+    if not content_type or content_type == "application/octet-stream":
+        content_type_map = {
+            "jpg": "image/jpeg",
+            "jpeg": "image/jpeg",
+            "png": "image/png",
+            "webp": "image/webp",
+            "pdf": "application/pdf",
+        }
+        content_type = content_type_map.get(ext, "image/jpeg")
 
     extraction = None
     ocr_text = ""

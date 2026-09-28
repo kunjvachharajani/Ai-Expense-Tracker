@@ -16,4 +16,6 @@ for candidate in candidates:
     if os.path.isdir(candidate) and candidate not in sys.path:
         sys.path.insert(0, candidate)
 
-from app.main import app
+from app.main import app  # type: ignore
+
+__all__ = ["app"]

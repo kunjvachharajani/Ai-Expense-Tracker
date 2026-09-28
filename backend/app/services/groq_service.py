@@ -148,7 +148,7 @@ async def parse_receipt_image(
     b64_str, mime = _prepare_image_for_groq(image_bytes, filename, content_type)
     system_prompt = _build_receipt_vision_system_prompt()
 
-    vision_model = settings.GROQ_VISION_MODEL if getattr(settings, "GROQ_VISION_MODEL", None) else "llama-3.2-11b-vision-preview"
+    vision_model = settings.GROQ_VISION_MODEL if getattr(settings, "GROQ_VISION_MODEL", None) else "qwen/qwen3.8-27b"
     payload = {
         "model": vision_model,
         "messages": [
@@ -322,7 +322,7 @@ def _validate_extraction_dict(parsed: dict, ocr_text: str = "") -> AIExpenseExtr
     # If amount is None or <= 0, try regex search in ocr_text as fallback
     if (parsed.get("amount") is None or (isinstance(parsed.get("amount"), (int, float)) and parsed["amount"] <= 0)) and ocr_text:
         patterns = [
-            r"(?i)(?:total|grand\s*total|amount\s*payable|amount\s*due|net\s*amount|balance\s*due|final\s*amount)[\s:=-]+(?:rs\.?|inr|₹|\$|€|£)?\s*([\d,]+(?:\.\d{1,2})?)",
+            r"(?i)\b(?:grand\s*total|final\s*amount|amount\s*payable|amount\s*due|net\s*amount|balance\s*due|total)[\s:=-]+(?:rs\.?|inr|₹|\$|€|£)?\s*([\d,]+(?:\.\d{1,2})?)",
             r"(?i)(?:rs\.?|inr|₹|\$)\s*([\d,]+(?:\.\d{1,2})?)",
         ]
         for pattern in patterns:

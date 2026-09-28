@@ -21,8 +21,13 @@ export default function ConfirmExpenseModal({ data, onConfirm, onCancel, loading
     category: data.category || 'Other',
     subcategory: data.subcategory || '',
     merchant: data.merchant || '',
-    description: data.description || '',
-    expense_date: data.date || new Date().toISOString().split('T')[0],
+    expense_date: data.date || (() => {
+      const d = new Date();
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${y}-${m}-${day}`;
+    })(),
     payment_method: data.payment_method || 'Unknown',
     currency: data.currency || 'INR',
   });

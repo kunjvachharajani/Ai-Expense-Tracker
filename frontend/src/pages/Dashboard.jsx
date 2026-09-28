@@ -10,6 +10,16 @@ const CATEGORY_COLORS = {
   Subscriptions: '#6366f1', 'Personal Care': '#d946ef', Home: '#84cc16', Other: '#6b7280',
 };
 
+const formatLocalDate = (dateStr, options = { day: 'numeric', month: 'short' }) => {
+  if (!dateStr) return '—';
+  const parts = dateStr.split('T')[0].split('-');
+  if (parts.length === 3) {
+    const [y, m, d] = parts.map(Number);
+    return new Date(y, m - 1, d).toLocaleDateString('en-IN', options);
+  }
+  return new Date(dateStr).toLocaleDateString('en-IN', options);
+};
+
 export default function Dashboard() {
   const [summary, setSummary] = useState(null);
   const [recent, setRecent] = useState([]);
@@ -26,7 +36,7 @@ export default function Dashboard() {
     try {
       const [summaryData, recentData] = await Promise.all([
         getAnalyticsSummary(period),
-        getRecentExpenses(5),
+        getRecentExpenses(10, period),
       ]);
       setSummary(summaryData);
       setRecent(recentData);
@@ -48,10 +58,12 @@ export default function Dashboard() {
     name, value: Math.round(value), fill: CATEGORY_COLORS[name] || '#6b7280',
   })) : [];
 
-  const dailyData = summary ? Object.entries(summary.daily_trend || {}).sort().slice(-14).map(([date, amount]) => ({
-    date: new Date(date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }),
-    amount: Math.round(amount),
-  })) : [];
+  const dailyData = summary ? Object.entries(summary.daily_trend || {})
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([date, amount]) => ({
+      date: formatLocalDate(date),
+      amount: Math.round(amount),
+    })) : [];
 
   const formatCurrency = (v) => `₹${Number(v).toLocaleString('en-IN')}`;
 
@@ -87,8 +99,10 @@ export default function Dashboard() {
         </div>
         <div className="stat-card">
           <div className="stat-card-icon green"><TrendingUp size={20} /></div>
-          <div className="stat-card-value">{formatCurrency(summary?.today_spent || 0)}</div>
-          <div className="stat-card-label">Spent today</div>
+          <div className="stat-card-value">
+            {formatCurrency(period === 'last_month' ? (summary?.avg_daily_spending || 0) : (summary?.today_spent || 0))}
+          </div>
+          <div className="stat-card-label">{period === 'last_month' ? 'Avg daily spent' : 'Spent today'}</div>
         </div>
         <div className="stat-card">
           <div className="stat-card-icon orange"><Receipt size={20} /></div>
@@ -162,10 +176,12 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Recent expenses */}
+      {/* Expenses for selected period */}
       <div className="card">
         <div className="card-header">
-          <h3 className="card-title">Recent Expenses</h3>
+          <h3 className="card-title">
+            {period === 'week' ? 'This Week’s Expenses' : period === 'last_month' ? 'Last Month’s Expenses' : 'This Month’s Expenses'}
+          </h3>
           <Link to="/expenses" className="btn btn-secondary btn-sm" style={{ textDecoration: 'none' }}>
             View All <ArrowRight size={14} />
           </Link>
@@ -186,7 +202,7 @@ export default function Dashboard() {
               <tbody>
                 {recent.map(exp => (
                   <tr key={exp.id}>
-                    <td>{new Date(exp.expense_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}</td>
+                    <td>{formatLocalDate(exp.expense_date)}</td>
                     <td>{exp.merchant || '—'}</td>
                     <td><span className={`badge badge-${exp.category?.toLowerCase().replace(' ', '')}`}>{exp.category}</span></td>
                     <td style={{ fontWeight: 600 }}>₹{Number(exp.amount).toLocaleString('en-IN')}</td>
@@ -199,8 +215,8 @@ export default function Dashboard() {
         ) : (
           <div className="empty-state">
             <Receipt size={40} />
-            <h3>No expenses yet</h3>
-            <p>Add your first expense to see it here.</p>
+            <h3>No expenses {period === 'last_month' ? 'recorded for last month' : period === 'week' ? 'this week' : 'this month'}</h3>
+            <p>Add an expense or switch period tabs above.</p>
           </div>
         )}
       </div>

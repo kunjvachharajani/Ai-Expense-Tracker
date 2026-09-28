@@ -67,16 +67,25 @@ async def extract_text_from_image(image_bytes: bytes, filename: str) -> str:
         "png": "image/png",
         "gif": "image/gif",
         "bmp": "image/bmp",
+        "webp": "image/webp",
         "pdf": "application/pdf",
     }
     content_type = content_type_map.get(ext, "image/jpeg")
-    filetype_param = ext.upper() if ext in ("jpg", "jpeg", "png", "gif", "bmp", "pdf") else "JPG"
+
+    # OCR.space strictly accepts PDF, GIF, PNG, JPG, TIF, BMP (NOT 'JPEG')
+    ext_lower = ext.lower()
+    if ext_lower in ("jpg", "jpeg", "webp"):
+        filetype_param = "JPG"
+    elif ext_lower in ("png", "gif", "bmp", "pdf"):
+        filetype_param = ext_lower.upper()
+    else:
+        filetype_param = "JPG"
 
     import asyncio
     resp = None
-    engines = ["1", "2"]  # Engine 1 is fastest (~1-2s), Engine 2 is secondary
+    engines = ["1", "2"]  # Engine 1 is fastest, Engine 2 is secondary
 
-    async with httpx.AsyncClient(timeout=9.0) as client:
+    async with httpx.AsyncClient(timeout=15.0) as client:
         for engine in engines:
             try:
                 resp = await client.post(
@@ -103,6 +112,9 @@ async def extract_text_from_image(image_bytes: bytes, filename: str) -> str:
                         text = parsed_results[0].get("ParsedText", "").strip()
                         if text and len(text) >= 5:
                             return text
+                else:
+                    err = data.get("ErrorMessage", ["OCR processing failed"])
+                    logger.warning(f"OCR.space Engine {engine} returned error: {err}")
             except (httpx.HTTPStatusError, httpx.RequestError) as e:
                 logger.warning(f"OCR.space Engine {engine} attempt failed: {e}")
                 await asyncio.sleep(0.3)

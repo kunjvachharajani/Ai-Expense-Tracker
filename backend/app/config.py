@@ -28,7 +28,7 @@ class Settings:
     SUPABASE_SERVICE_ROLE_KEY: str = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
     FRONTEND_URL: str = os.getenv("FRONTEND_URL", "http://localhost:5173")
     GROQ_MODEL: str = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
-    GROQ_VISION_MODEL: str = os.getenv("GROQ_VISION_MODEL", "")
+    GROQ_VISION_MODEL: str = os.getenv("GROQ_VISION_MODEL", "qwen/qwen3.8-27b")
 
 
 settings = Settings()
