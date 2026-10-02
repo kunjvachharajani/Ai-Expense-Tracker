@@ -1,7 +1,3 @@
-import os
-import sys
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
-
 from datetime import date
 from app.api.analytics import calculate_period_dates
 

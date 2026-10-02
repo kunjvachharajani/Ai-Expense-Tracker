@@ -2,10 +2,6 @@
 Tests for expense validation, date parsing, and category validation.
 Run with: python -m pytest tests/ -v
 """
-import sys
-import os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
-
 import pytest
 from datetime import date, timedelta
 from pydantic import ValidationError
