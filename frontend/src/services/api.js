@@ -63,7 +63,7 @@ async function request(path, options = {}, retries = 2) {
     } catch (err) {
       if (err.name === 'TypeError' && err.message.includes('fetch')) {
         if (attempt < retries) {
-          await sleep(2000);
+          await sleep(800);
           continue;
         }
         throw new Error(getUnreachableMessage());
@@ -184,6 +184,11 @@ export async function getRecentExpenses(limit = 10, period, startDate, endDate) 
   if (startDate) params.set('start_date', startDate);
   if (endDate) params.set('end_date', endDate);
   return request(`/api/analytics/recent?${params.toString()}`);
+}
+
+export async function getDashboardData(period = 'month', limit = 10) {
+  const params = new URLSearchParams({ period, limit });
+  return request(`/api/analytics/dashboard?${params.toString()}`);
 }
 
 export async function getAISummary() {

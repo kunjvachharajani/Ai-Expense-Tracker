@@ -1,8 +1,8 @@
-import { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { Link, useLocation } from 'react-router-dom';
 import { IndianRupee, TrendingUp, Receipt, Tag, PlusCircle, Sparkles, ArrowRight, Lightbulb, AlertTriangle, X } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
-import { getAnalyticsSummary, getRecentExpenses, getAISummary, getInsights, dismissInsight } from '../services/api';
+import { getDashboardData, getAISummary, getInsights, dismissInsight } from '../services/api';
 
 const CATEGORY_COLORS = {
   Food: '#f97316', Transport: '#3b82f6', Shopping: '#8b5cf6', Bills: '#ef4444',
@@ -27,30 +27,36 @@ export default function Dashboard() {
   const [insights, setInsights] = useState([]);
   const [period, setPeriod] = useState('month');
   const [loading, setLoading] = useState(true);
+  const location = useLocation();
+  const loadIdRef = useRef(0);
 
+  // Re-fetch whenever period changes OR when user navigates back to this page
   useEffect(() => {
     loadData();
-  }, [period]);
+  }, [period, location.key]);
 
-  const loadData = async () => {
-    setLoading(true);
+  const loadData = useCallback(async () => {
+    const thisLoadId = ++loadIdRef.current;
+    // Only show full spinner if we have no data yet
+    if (!summary) setLoading(true);
+
     try {
-      const [summaryData, recentData] = await Promise.all([
-        getAnalyticsSummary(period),
-        getRecentExpenses(10, period),
-      ]);
-      setSummary(summaryData);
-      setRecent(recentData);
-
-      // Load AI summary and insights in background
-      getAISummary().then(d => setAiSummary(d.summary)).catch(() => {});
-      getInsights().then(d => setInsights(d || [])).catch(() => {});
+      // Single combined request for summary + recent (1 DB query)
+      const dashData = await getDashboardData(period, 10);
+      // Guard against stale responses from a previous period switch
+      if (thisLoadId !== loadIdRef.current) return;
+      setSummary(dashData.summary);
+      setRecent(dashData.recent || []);
     } catch (err) {
       console.error('Dashboard load error:', err);
     } finally {
-      setLoading(false);
+      if (thisLoadId === loadIdRef.current) setLoading(false);
     }
-  };
+
+    // Fire AI summary and insights in parallel, fully non-blocking
+    getAISummary().then(d => { if (thisLoadId === loadIdRef.current) setAiSummary(d.summary); }).catch(() => {});
+    getInsights().then(d => { if (thisLoadId === loadIdRef.current) setInsights(d || []); }).catch(() => {});
+  }, [period, summary]);
 
   if (loading && !summary) {
     return <div className="loading-page"><span className="loading-spinner lg" /><p>Loading dashboard...</p></div>;

@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from app.api.auth import get_current_user
 from app.db import get_supabase_client
 from app.schemas import Insight
-from app.services.analytics_service import get_summary, get_recent_expenses
+from app.services.analytics_service import get_summary, get_recent_expenses, get_dashboard_data
 from app.services.groq_service import generate_spending_summary, summarize_insights
 from app.services.insights_service import build_insights, _fetch_dismissed_keys
 
@@ -105,6 +105,25 @@ async def recent_expenses(
     except Exception as e:
         logger.error(f"Recent expenses error: {e}")
         raise HTTPException(status_code=500, detail="Failed to fetch recent expenses.")
+
+
+@router.get("/dashboard")
+async def dashboard_data(
+    period: str = Query("month", pattern="^(week|month|last_month|three_months|year|custom)$"),
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    limit: int = Query(10, ge=1, le=50),
+    user: dict = Depends(get_current_user),
+):
+    """Combined endpoint: returns summary + recent expenses in one response."""
+    today = date.today()
+    sd, ed = calculate_period_dates(period, today, start_date, end_date)
+
+    try:
+        return get_dashboard_data(user["id"], sd, ed, recent_limit=limit)
+    except Exception as e:
+        logger.error(f"Dashboard data error: {e}")
+        raise HTTPException(status_code=500, detail="Failed to load dashboard data.")
 
 
 @router.get("/ai-summary")
