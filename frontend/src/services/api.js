@@ -190,6 +190,16 @@ export async function getAISummary() {
   return request('/api/analytics/ai-summary');
 }
 
+export async function getInsights() {
+  return request('/api/analytics/insights');
+}
+
+export async function dismissInsight(key) {
+  return request(`/api/analytics/insights/${encodeURIComponent(key)}/dismiss`, {
+    method: 'POST',
+  });
+}
+
 // ---------- Budgets ----------
 
 export async function listBudgets(month) {

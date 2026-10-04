@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { IndianRupee, TrendingUp, Receipt, Tag, PlusCircle, Sparkles, ArrowRight } from 'lucide-react';
+import { IndianRupee, TrendingUp, Receipt, Tag, PlusCircle, Sparkles, ArrowRight, Lightbulb, AlertTriangle, X } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
-import { getAnalyticsSummary, getRecentExpenses, getAISummary } from '../services/api';
+import { getAnalyticsSummary, getRecentExpenses, getAISummary, getInsights, dismissInsight } from '../services/api';
 
 const CATEGORY_COLORS = {
   Food: '#f97316', Transport: '#3b82f6', Shopping: '#8b5cf6', Bills: '#ef4444',
@@ -24,6 +24,7 @@ export default function Dashboard() {
   const [summary, setSummary] = useState(null);
   const [recent, setRecent] = useState([]);
   const [aiSummary, setAiSummary] = useState('');
+  const [insights, setInsights] = useState([]);
   const [period, setPeriod] = useState('month');
   const [loading, setLoading] = useState(true);
 
@@ -41,8 +42,9 @@ export default function Dashboard() {
       setSummary(summaryData);
       setRecent(recentData);
 
-      // Load AI summary in background
+      // Load AI summary and insights in background
       getAISummary().then(d => setAiSummary(d.summary)).catch(() => {});
+      getInsights().then(d => setInsights(d || [])).catch(() => {});
     } catch (err) {
       console.error('Dashboard load error:', err);
     } finally {
@@ -67,6 +69,12 @@ export default function Dashboard() {
 
   const formatCurrency = (v) => `₹${Number(v).toLocaleString('en-IN')}`;
 
+  const handleDismissInsight = (key) => {
+    // Optimistic UI — remove immediately, fire API in background
+    setInsights(prev => prev.filter(i => i.key !== key));
+    dismissInsight(key).catch(() => {});
+  };
+
   return (
     <div>
       {/* AI Summary */}
@@ -74,6 +82,32 @@ export default function Dashboard() {
         <div className="ai-summary">
           <div className="ai-summary-label"><Sparkles size={14} /> AI Spending Summary</div>
           <p className="ai-summary-text">{aiSummary}</p>
+        </div>
+      )}
+
+      {/* Spending Insights */}
+      {insights.length > 0 && (
+        <div className="insights-section" style={{ marginBottom: 24 }}>
+          <div className="ai-summary-label" style={{ marginBottom: 12 }}>
+            <Lightbulb size={14} /> Spending Insights
+          </div>
+          <div className="insights-grid">
+            {insights.map(insight => (
+              <div key={insight.key} className={`insight-card ${insight.severity === 'warning' ? 'insight-card-warning' : 'insight-card-info'}`}>
+                <div className="insight-card-icon">
+                  {insight.severity === 'warning' ? <AlertTriangle size={16} /> : <Lightbulb size={16} />}
+                </div>
+                <p className="insight-card-message">{insight.message}</p>
+                <button
+                  className="insight-card-dismiss"
+                  onClick={() => handleDismissInsight(insight.key)}
+                  title="Dismiss"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 

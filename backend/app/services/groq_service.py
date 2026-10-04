@@ -343,3 +343,111 @@ def _validate_extraction_dict(parsed: dict, ocr_text: str = "") -> AIExpenseExtr
         logger.error(f"Pydantic validation failed: {e}  |  raw={parsed}")
         raise ValueError(f"Could not validate AI response: {e}")
 
+
+# ==================== Insight Summarization ====================
+
+_INSIGHT_TEMPLATES = {
+    "category_spike": (
+        "Your {category} spending this month is ₹{this_month}, "
+        "which is {pct_change}% higher than your {avg_prior_months}-month average of ₹{avg_prior}."
+    ),
+    "new_merchant": (
+        "You spent ₹{amount} at {merchant} on {date} — "
+        "this is the first time this merchant appears in your records."
+    ),
+    "duplicate_charge": (
+        "You were charged ₹{amount} at {merchant} on both {date_1} and {date_2}. "
+        "This may be a duplicate."
+    ),
+    "recurring_drift": (
+        "Your recurring charge at {merchant} changed from ₹{previous_amount} "
+        "to ₹{latest_amount} ({drift_pct}% difference)."
+    ),
+    "budget_pace": (
+        "You have used {pct_budget_used}% of your {category} budget "
+        "but only {pct_month_elapsed}% of the month has passed."
+    ),
+}
+
+
+def _fallback_message(fact: dict) -> str:
+    """Generate a plain-English message from a fact using hardcoded templates."""
+    template = _INSIGHT_TEMPLATES.get(fact.get("type", ""))
+    if not template:
+        return f"Spending insight detected: {fact.get('type', 'unknown')}."
+
+    # Build template vars with safe defaults
+    template_vars = dict(fact)
+    # For category_spike, provide avg_prior_months count
+    if fact.get("type") == "category_spike":
+        template_vars.setdefault("avg_prior_months", 3)
+
+    try:
+        return template.format(**template_vars)
+    except (KeyError, IndexError):
+        return f"Spending insight detected: {fact.get('type', 'unknown')}."
+
+
+async def summarize_insights(facts: list[dict]) -> list[str]:
+    """
+    Send structured facts to Groq for plain-English one-sentence summaries.
+    Falls back to hardcoded templates on any failure.
+
+    Returns a list of message strings, one per fact, in the same order.
+    """
+    if not facts:
+        return []
+
+    # Build a prompt with all facts for batch summarization
+    facts_text = json.dumps(facts, indent=2)
+    payload = {
+        "model": settings.GROQ_MODEL,
+        "messages": [
+            {
+                "role": "system",
+                "content": (
+                    "You are a concise financial assistant. You receive a JSON array of "
+                    "spending insight facts. For each fact, write exactly ONE short, "
+                    "plain-English sentence summarizing it. Use ₹ for currency.\n\n"
+                    "RULES:\n"
+                    "1. Return a JSON array of strings, one per fact, in the same order.\n"
+                    "2. Do NOT change, reinterpret, or round the numbers — use them exactly as given.\n"
+                    "3. No financial jargon, no exclamation marks. Matter-of-fact tone.\n"
+                    "4. Each sentence should be self-contained and under 30 words.\n"
+                    "5. Return ONLY the JSON array. No markdown, no explanation."
+                ),
+            },
+            {
+                "role": "user",
+                "content": f"Summarize these spending insights:\n\n{facts_text}",
+            },
+        ],
+        "temperature": 0.3,
+        "max_tokens": 500,
+        "response_format": {"type": "json_object"},
+    }
+
+    try:
+        raw_content = await _call_groq_raw(payload)
+        parsed = _clean_and_decode_json(raw_content)
+
+        # Handle either {"summaries": [...]} or a raw array
+        if isinstance(parsed, dict):
+            messages = parsed.get("summaries", parsed.get("messages", parsed.get("insights", [])))
+        elif isinstance(parsed, list):
+            messages = parsed
+        else:
+            raise ValueError("Unexpected response format")
+
+        if isinstance(messages, list) and len(messages) == len(facts):
+            return [str(m) for m in messages]
+
+        # Length mismatch — fall back
+        logger.warning(f"Groq returned {len(messages) if isinstance(messages, list) else 'non-list'} summaries for {len(facts)} facts, using fallbacks")
+        return [_fallback_message(f) for f in facts]
+
+    except Exception as e:
+        logger.warning(f"Insight summarization failed, using fallback templates: {e}")
+        return [_fallback_message(f) for f in facts]
+
+

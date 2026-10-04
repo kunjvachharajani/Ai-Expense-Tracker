@@ -926,6 +926,85 @@ table tr:hover td {
   line-height: 1.5;
 }
 
+/* ---- Insight Cards ---- */
+.insights-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 12px;
+}
+
+.insight-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--white);
+  position: relative;
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+  animation: insightFadeIn 0.3s ease both;
+}
+
+.insight-card:hover {
+  box-shadow: var(--shadow-md);
+  transform: translateY(-1px);
+}
+
+@keyframes insightFadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.insight-card-info {
+  border-left: 3px solid var(--info);
+  background: var(--info-light);
+}
+
+.insight-card-info .insight-card-icon {
+  color: var(--info);
+}
+
+.insight-card-warning {
+  border-left: 3px solid var(--warning);
+  background: var(--warning-light);
+}
+
+.insight-card-warning .insight-card-icon {
+  color: var(--warning);
+}
+
+.insight-card-icon {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.insight-card-message {
+  flex: 1;
+  font-size: 0.88rem;
+  line-height: 1.45;
+  color: var(--text-primary);
+}
+
+.insight-card-dismiss {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  padding: 4px;
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.15s, background 0.15s;
+}
+
+.insight-card-dismiss:hover {
+  color: var(--error);
+  background: var(--error-light);
+}
+
+
 /* ---- Responsive ---- */
 @media (max-width: 1024px) {
   .stats-grid { grid-template-columns: repeat(2, 1fr); }

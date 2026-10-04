@@ -190,3 +190,15 @@ class ParseTextRequest(BaseModel):
 
 
 # ---------- Receipt scan request is handled via UploadFile ----------
+
+
+# ==================== Insight Schema ====================
+
+class Insight(BaseModel):
+    """A single spending insight surfaced on the dashboard."""
+    key: str = Field(..., description="Deterministic key, e.g. category_spike:Food:2026-09")
+    type: str = Field(..., description="Insight type identifier")
+    message: str = Field(default="", description="Plain-English summary sentence")
+    severity: str = Field(default="info", pattern="^(info|warning)$")
+    data: dict = Field(default_factory=dict, description="Structured fact data")
+

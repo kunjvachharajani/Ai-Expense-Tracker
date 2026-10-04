@@ -88,3 +88,32 @@ CREATE POLICY "Users can update their own budgets"
 CREATE POLICY "Users can delete their own budgets"
     ON budgets FOR DELETE
     USING (auth.uid() = user_id);
+
+-- ============================================================
+-- INSIGHT DISMISSALS TABLE
+-- ============================================================
+CREATE TABLE IF NOT EXISTS insight_dismissals (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    insight_key TEXT NOT NULL,
+    dismissed_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(user_id, insight_key)
+);
+
+CREATE INDEX IF NOT EXISTS idx_insight_dismissals_user ON insight_dismissals(user_id);
+
+-- RLS for insight_dismissals
+ALTER TABLE insight_dismissals ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can view their own dismissals"
+    ON insight_dismissals FOR SELECT
+    USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can insert their own dismissals"
+    ON insight_dismissals FOR INSERT
+    WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users can delete their own dismissals"
+    ON insight_dismissals FOR DELETE
+    USING (auth.uid() = user_id);
+

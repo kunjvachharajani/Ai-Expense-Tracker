@@ -9,8 +9,11 @@ from typing import Optional, Tuple
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.api.auth import get_current_user
+from app.db import get_supabase_client
+from app.schemas import Insight
 from app.services.analytics_service import get_summary, get_recent_expenses
-from app.services.groq_service import generate_spending_summary
+from app.services.groq_service import generate_spending_summary, summarize_insights
+from app.services.insights_service import build_insights, _fetch_dismissed_keys
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/analytics", tags=["Analytics"])
@@ -121,3 +124,63 @@ async def ai_spending_summary(user: dict = Depends(get_current_user)):
     except Exception as e:
         logger.error(f"AI summary error: {e}")
         return {"summary": "Unable to generate summary right now."}
+
+
+# ==================== Insights ====================
+
+# Simple in-memory cache: {user_id: (timestamp, insights_list)}
+_insights_cache: dict[str, tuple[float, list]] = {}
+_INSIGHTS_CACHE_TTL = 300  # 5 minutes
+
+
+@router.get("/insights", response_model=list[Insight])
+async def get_insights(user: dict = Depends(get_current_user)):
+    """Get spending insights for the current user, excluding dismissed ones."""
+    import time
+
+    user_id = user["id"]
+
+    # Check cache
+    cached = _insights_cache.get(user_id)
+    if cached and (time.time() - cached[0]) < _INSIGHTS_CACHE_TTL:
+        insights = cached[1]
+    else:
+        try:
+            raw_insights = build_insights(user_id)
+
+            # AI summarization
+            if raw_insights:
+                facts = [i["data"] for i in raw_insights]
+                messages = await summarize_insights(facts)
+                for i, msg in enumerate(messages):
+                    raw_insights[i]["message"] = msg
+
+            insights = raw_insights
+            _insights_cache[user_id] = (time.time(), insights)
+        except Exception as e:
+            logger.error(f"Insights generation error: {e}")
+            raise HTTPException(status_code=500, detail="Failed to generate insights.")
+
+    # Filter out dismissed insights
+    try:
+        dismissed = _fetch_dismissed_keys(user_id)
+    except Exception:
+        dismissed = set()
+
+    filtered = [i for i in insights if i["key"] not in dismissed]
+    return filtered
+
+
+@router.post("/insights/{key:path}/dismiss", status_code=204)
+async def dismiss_insight(key: str, user: dict = Depends(get_current_user)):
+    """Dismiss an insight so it won't be shown again."""
+    sb = get_supabase_client()
+    try:
+        sb.table("insight_dismissals").upsert({
+            "user_id": user["id"],
+            "insight_key": key,
+        }).execute()
+    except Exception as e:
+        logger.error(f"Dismiss insight error: {e}")
+        raise HTTPException(status_code=500, detail="Failed to dismiss insight.")
+
