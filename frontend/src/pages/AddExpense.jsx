@@ -36,7 +36,7 @@ export default function AddExpense() {
       setSuccess('Expense saved successfully!');
       setExtraction(null);
       setText('');
-      setTimeout(() => navigate('/'), 1500);
+      setTimeout(() => navigate('/', { state: { refreshedAt: Date.now() } }), 500);
     } catch (err) {
       setError(err.message || 'Failed to save expense.');
     } finally {

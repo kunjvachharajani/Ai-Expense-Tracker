@@ -125,7 +125,7 @@ export default function ScanReceipt() {
       setExtraction(null);
       setFile(null);
       setPreview(null);
-      setTimeout(() => navigate('/'), 1500);
+      setTimeout(() => navigate('/', { state: { refreshedAt: Date.now() } }), 500);
     } catch (err) {
       setError(err.message || 'Failed to save.');
     } finally {

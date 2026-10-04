@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { IndianRupee, TrendingUp, Receipt, Tag, PlusCircle, Sparkles, ArrowRight, Lightbulb, AlertTriangle, X } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
-import { getDashboardData, getAISummary, getInsights, dismissInsight } from '../services/api';
+import { getDashboardData, getAISummary, getInsights, dismissInsight, onExpenseChanged } from '../services/api';
 
 const CATEGORY_COLORS = {
   Food: '#f97316', Transport: '#3b82f6', Shopping: '#8b5cf6', Bills: '#ef4444',
@@ -20,43 +20,113 @@ const formatLocalDate = (dateStr, options = { day: 'numeric', month: 'short' }) 
   return new Date(dateStr).toLocaleDateString('en-IN', options);
 };
 
+const CACHE_KEY = 'expense_tracker_dash_periods';
+
 export default function Dashboard() {
   const [summary, setSummary] = useState(null);
   const [recent, setRecent] = useState([]);
+  const [periodsData, setPeriodsData] = useState({});
   const [aiSummary, setAiSummary] = useState('');
   const [insights, setInsights] = useState([]);
   const [period, setPeriod] = useState('month');
   const [loading, setLoading] = useState(true);
   const location = useLocation();
   const loadIdRef = useRef(0);
+  const periodsDataRef = useRef(null);
 
-  // Re-fetch whenever period changes OR when user navigates back to this page
-  useEffect(() => {
-    loadData();
-  }, [period, location.key]);
+  const loadAIAndInsights = useCallback(() => {
+    getAISummary()
+      .then(d => { if (d?.summary) setAiSummary(d.summary); })
+      .catch(() => {});
+    getInsights()
+      .then(d => { if (Array.isArray(d)) setInsights(d); })
+      .catch(() => {});
+  }, []);
 
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (forced = false, targetPeriod = period) => {
     const thisLoadId = ++loadIdRef.current;
-    // Only show full spinner if we have no data yet
+
+    // Use fast in-memory multi-period cache if available and not forced
+    if (!forced && periodsDataRef.current && periodsDataRef.current[targetPeriod]) {
+      setSummary(periodsDataRef.current[targetPeriod].summary);
+      setRecent(periodsDataRef.current[targetPeriod].recent || []);
+      setLoading(false);
+      return;
+    }
+
     if (!summary) setLoading(true);
 
     try {
-      // Single combined request for summary + recent (1 DB query)
-      const dashData = await getDashboardData(period, 10);
-      // Guard against stale responses from a previous period switch
+      // 1 single database query computes active period + pre-calculates week, month, last_month
+      const dashData = await getDashboardData(targetPeriod, 10);
       if (thisLoadId !== loadIdRef.current) return;
+
+      if (dashData.periods) {
+        periodsDataRef.current = dashData.periods;
+        setPeriodsData(dashData.periods);
+        try {
+          sessionStorage.setItem(CACHE_KEY, JSON.stringify(dashData.periods));
+        } catch {}
+      }
+
       setSummary(dashData.summary);
       setRecent(dashData.recent || []);
     } catch (err) {
       console.error('Dashboard load error:', err);
     } finally {
-      if (thisLoadId === loadIdRef.current) setLoading(false);
+      if (thisLoadId === loadIdRef.current) {
+        setLoading(false);
+      }
     }
-
-    // Fire AI summary and insights in parallel, fully non-blocking
-    getAISummary().then(d => { if (thisLoadId === loadIdRef.current) setAiSummary(d.summary); }).catch(() => {});
-    getInsights().then(d => { if (thisLoadId === loadIdRef.current) setInsights(d || []); }).catch(() => {});
   }, [period, summary]);
+
+  // Initial load: instant display from cache + background revalidation
+  useEffect(() => {
+    try {
+      const cached = sessionStorage.getItem(CACHE_KEY);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        periodsDataRef.current = parsed;
+        setPeriodsData(parsed);
+        if (parsed[period]) {
+          setSummary(parsed[period].summary);
+          setRecent(parsed[period].recent || []);
+          setLoading(false);
+        }
+      }
+    } catch {}
+
+    loadData(true);
+    loadAIAndInsights();
+  }, [location.key]);
+
+  // Listen for expense changes across the app (creation, updates, deletes)
+  useEffect(() => {
+    const unsubscribe = onExpenseChanged(() => {
+      // Clear cache and immediately refresh all 3 periods + AI summary + insights
+      try {
+        sessionStorage.removeItem(CACHE_KEY);
+      } catch {}
+      periodsDataRef.current = null;
+      loadData(true);
+      loadAIAndInsights();
+    });
+    return unsubscribe;
+  }, [loadData, loadAIAndInsights]);
+
+  // Handle switching between This Week, This Month, Last Month instantly
+  const handlePeriodChange = (newPeriod) => {
+    if (newPeriod === period) return;
+    setPeriod(newPeriod);
+
+    // Instant 0ms switch if already pre-calculated in periodsData
+    if (periodsDataRef.current && periodsDataRef.current[newPeriod]) {
+      setSummary(periodsDataRef.current[newPeriod].summary);
+      setRecent(periodsDataRef.current[newPeriod].recent || []);
+    } else {
+      loadData(false, newPeriod);
+    }
+  };
 
   if (loading && !summary) {
     return <div className="loading-page"><span className="loading-spinner lg" /><p>Loading dashboard...</p></div>;
@@ -76,7 +146,6 @@ export default function Dashboard() {
   const formatCurrency = (v) => `₹${Number(v).toLocaleString('en-IN')}`;
 
   const handleDismissInsight = (key) => {
-    // Optimistic UI — remove immediately, fire API in background
     setInsights(prev => prev.filter(i => i.key !== key));
     dismissInsight(key).catch(() => {});
   };
@@ -117,14 +186,18 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Period tabs */}
+      {/* Period tabs (Instant 0ms switching across all 3) */}
       <div className="tabs" style={{ marginBottom: 24 }}>
         {[
           { key: 'week', label: 'This Week' },
           { key: 'month', label: 'This Month' },
           { key: 'last_month', label: 'Last Month' },
         ].map(t => (
-          <button key={t.key} className={`tab ${period === t.key ? 'active' : ''}`} onClick={() => setPeriod(t.key)}>
+          <button
+            key={t.key}
+            className={`tab ${period === t.key ? 'active' : ''}`}
+            onClick={() => handlePeriodChange(t.key)}
+          >
             {t.label}
           </button>
         ))}

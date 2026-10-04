@@ -39,3 +39,20 @@ def test_calculate_period_dates_custom():
     sd, ed = calculate_period_dates("custom", test_today, "2026-07-01", "2026-07-15")
     assert sd == "2026-07-01"
     assert ed == "2026-07-15"
+
+
+def test_resolve_today():
+    from app.api.analytics import _resolve_today
+    assert _resolve_today("2026-10-05") == date(2026, 10, 5)
+    assert _resolve_today("invalid-date") == date.today()
+    assert _resolve_today(None) == date.today()
+
+
+def test_invalidate_analytics_cache():
+    from app.api.analytics import invalidate_analytics_cache, _insights_cache, _ai_summary_cache
+    _insights_cache["user1"] = (123.0, [])
+    _ai_summary_cache["user1"] = (123.0, "summary")
+    invalidate_analytics_cache("user1")
+    assert "user1" not in _insights_cache
+    assert "user1" not in _ai_summary_cache
+

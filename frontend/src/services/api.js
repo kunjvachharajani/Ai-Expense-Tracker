@@ -46,6 +46,29 @@ function getUnreachableMessage() {
   return 'Backend server is waking up or unreachable. Please wait a few seconds and try again.';
 }
 
+const EXPENSE_CHANGE_EVENT = 'expense-tracker-expense-changed';
+
+export function emitExpenseChanged(data) {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent(EXPENSE_CHANGE_EVENT, { detail: data }));
+  }
+}
+
+export function onExpenseChanged(callback) {
+  if (typeof window === 'undefined') return () => {};
+  const handler = (e) => callback(e.detail);
+  window.addEventListener(EXPENSE_CHANGE_EVENT, handler);
+  return () => window.removeEventListener(EXPENSE_CHANGE_EVENT, handler);
+}
+
+export function getClientDateStr() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
 async function request(path, options = {}, retries = 2) {
   const headers = await getAuthHeaders();
   let res;
@@ -53,8 +76,11 @@ async function request(path, options = {}, retries = 2) {
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
       res = await fetch(`${API_URL}${path}`, {
+        cache: 'no-store',
         ...options,
         headers: {
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
           ...headers,
           ...(options.headers || {}),
         },
@@ -94,11 +120,13 @@ export async function parseTextExpense(text) {
 }
 
 export async function createExpense(expense) {
-  return request('/api/expenses', {
+  const created = await request('/api/expenses', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(expense),
   });
+  emitExpenseChanged({ action: 'create', expense: created });
+  return created;
 }
 
 export async function listExpenses(params = {}) {
@@ -108,23 +136,28 @@ export async function listExpenses(params = {}) {
       query.set(key, val);
     }
   });
+  query.set('_t', Date.now());
   return request(`/api/expenses?${query.toString()}`);
 }
 
 export async function getExpense(id) {
-  return request(`/api/expenses/${id}`);
+  return request(`/api/expenses/${id}?_t=${Date.now()}`);
 }
 
 export async function updateExpense(id, data) {
-  return request(`/api/expenses/${id}`, {
+  const updated = await request(`/api/expenses/${id}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   });
+  emitExpenseChanged({ action: 'update', expense: updated });
+  return updated;
 }
 
 export async function deleteExpense(id) {
-  return request(`/api/expenses/${id}`, { method: 'DELETE' });
+  const res = await request(`/api/expenses/${id}`, { method: 'DELETE' });
+  emitExpenseChanged({ action: 'delete', id });
+  return res;
 }
 
 // ---------- Receipts ----------
@@ -171,32 +204,37 @@ export async function scanReceipt(file, retries = 1) {
 
 // ---------- Analytics ----------
 
-export async function getAnalyticsSummary(period = 'month', startDate, endDate) {
-  const params = new URLSearchParams({ period });
+export async function getAnalyticsSummary(period = 'month', startDate, endDate, clientDate) {
+  const cDate = clientDate || getClientDateStr();
+  const params = new URLSearchParams({ period, client_date: cDate, _t: Date.now() });
   if (startDate) params.set('start_date', startDate);
   if (endDate) params.set('end_date', endDate);
   return request(`/api/analytics/summary?${params.toString()}`);
 }
 
-export async function getRecentExpenses(limit = 10, period, startDate, endDate) {
-  const params = new URLSearchParams({ limit });
+export async function getRecentExpenses(limit = 10, period, startDate, endDate, clientDate) {
+  const cDate = clientDate || getClientDateStr();
+  const params = new URLSearchParams({ limit, client_date: cDate, _t: Date.now() });
   if (period) params.set('period', period);
   if (startDate) params.set('start_date', startDate);
   if (endDate) params.set('end_date', endDate);
   return request(`/api/analytics/recent?${params.toString()}`);
 }
 
-export async function getDashboardData(period = 'month', limit = 10) {
-  const params = new URLSearchParams({ period, limit });
+export async function getDashboardData(period = 'month', limit = 10, clientDate) {
+  const cDate = clientDate || getClientDateStr();
+  const params = new URLSearchParams({ period, limit, client_date: cDate, _t: Date.now() });
   return request(`/api/analytics/dashboard?${params.toString()}`);
 }
 
-export async function getAISummary() {
-  return request('/api/analytics/ai-summary');
+export async function getAISummary(clientDate) {
+  const cDate = clientDate || getClientDateStr();
+  const params = new URLSearchParams({ client_date: cDate, _t: Date.now() });
+  return request(`/api/analytics/ai-summary?${params.toString()}`);
 }
 
 export async function getInsights() {
-  return request('/api/analytics/insights');
+  return request(`/api/analytics/insights?_t=${Date.now()}`);
 }
 
 export async function dismissInsight(key) {

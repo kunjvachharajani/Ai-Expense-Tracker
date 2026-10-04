@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { useLocation } from 'react-router-dom';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line } from 'recharts';
 import { TrendingUp, DollarSign, ShoppingBag, Calendar } from 'lucide-react';
-import { getAnalyticsSummary } from '../services/api';
+import { getAnalyticsSummary, onExpenseChanged } from '../services/api';
 
 const CATEGORY_COLORS = {
   Food: '#f97316', Transport: '#3b82f6', Shopping: '#8b5cf6', Bills: '#ef4444',
@@ -31,20 +32,49 @@ export default function Analytics() {
   const [period, setPeriod] = useState('month');
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const location = useLocation();
+  const cacheRef = useRef({});
 
-  useEffect(() => {
-    loadData();
-  }, [period]);
+  const loadData = useCallback(async (forced = false, targetPeriod = period) => {
+    if (!forced && cacheRef.current[targetPeriod]) {
+      setData(cacheRef.current[targetPeriod]);
+      setLoading(false);
+      return;
+    }
 
-  const loadData = async () => {
-    setLoading(true);
+    if (!data) setLoading(true);
+
     try {
-      const result = await getAnalyticsSummary(period);
+      const result = await getAnalyticsSummary(targetPeriod);
+      cacheRef.current[targetPeriod] = result;
       setData(result);
     } catch (err) {
       console.error(err);
     } finally {
       setLoading(false);
+    }
+  }, [period, data]);
+
+  // Load when navigated to or period changes
+  useEffect(() => {
+    loadData(false, period);
+  }, [period, location.key]);
+
+  // Auto-refresh when an expense is added, edited, or deleted anywhere
+  useEffect(() => {
+    const unsubscribe = onExpenseChanged(() => {
+      cacheRef.current = {};
+      loadData(true, period);
+    });
+    return unsubscribe;
+  }, [period, loadData]);
+
+  const handlePeriodChange = (newPeriod) => {
+    setPeriod(newPeriod);
+    if (cacheRef.current[newPeriod]) {
+      setData(cacheRef.current[newPeriod]);
+    } else {
+      loadData(false, newPeriod);
     }
   };
 
@@ -70,7 +100,7 @@ export default function Analytics() {
       {/* Period selector */}
       <div className="tabs" style={{ marginBottom: 24 }}>
         {PERIODS.map(p => (
-          <button key={p.key} className={`tab ${period === p.key ? 'active' : ''}`} onClick={() => setPeriod(p.key)}>
+          <button key={p.key} className={`tab ${period === p.key ? 'active' : ''}`} onClick={() => handlePeriodChange(p.key)}>
             {p.label}
           </button>
         ))}

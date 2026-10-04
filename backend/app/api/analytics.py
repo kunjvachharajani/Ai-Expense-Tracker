@@ -65,19 +65,30 @@ def calculate_period_dates(
     return sd, ed
 
 
+def _resolve_today(client_date: Optional[str] = None) -> date:
+    """Safely resolve user's local date if supplied, falling back to server date."""
+    if client_date:
+        try:
+            return date.fromisoformat(client_date.split("T")[0])
+        except (ValueError, TypeError):
+            pass
+    return date.today()
+
+
 @router.get("/summary")
 async def analytics_summary(
     period: str = Query("month", pattern="^(week|month|last_month|three_months|year|custom)$"),
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
+    client_date: Optional[str] = None,
     user: dict = Depends(get_current_user),
 ):
     """Get spending summary for a given period."""
-    today = date.today()
+    today = _resolve_today(client_date)
     sd, ed = calculate_period_dates(period, today, start_date, end_date)
 
     try:
-        summary = get_summary(user["id"], sd, ed)
+        summary = get_summary(user["id"], sd, ed, today_str=today.isoformat())
         return {**summary, "start_date": sd, "end_date": ed, "period": period}
     except Exception as e:
         logger.error(f"Analytics error: {e}")
@@ -90,12 +101,13 @@ async def recent_expenses(
     period: Optional[str] = Query(None, pattern="^(week|month|last_month|three_months|year|custom)$"),
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
+    client_date: Optional[str] = None,
     user: dict = Depends(get_current_user),
 ):
     """Get recent expenses for dashboard, optionally filtered by period or date range."""
     sd, ed = None, None
     if period:
-        today = date.today()
+        today = _resolve_today(client_date)
         sd, ed = calculate_period_dates(period, today, start_date, end_date)
     elif start_date and end_date:
         sd, ed = start_date, end_date
@@ -112,33 +124,67 @@ async def dashboard_data(
     period: str = Query("month", pattern="^(week|month|last_month|three_months|year|custom)$"),
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
+    client_date: Optional[str] = None,
     limit: int = Query(10, ge=1, le=50),
     user: dict = Depends(get_current_user),
 ):
-    """Combined endpoint: returns summary + recent expenses in one response."""
-    today = date.today()
+    """Combined endpoint: returns summary + recent expenses for active period + multi-period prefetch."""
+    today = _resolve_today(client_date)
     sd, ed = calculate_period_dates(period, today, start_date, end_date)
 
+    multi_periods = None
+    if period in ("week", "month", "last_month") and not start_date and not end_date:
+        multi_periods = {
+            "week": calculate_period_dates("week", today),
+            "month": calculate_period_dates("month", today),
+            "last_month": calculate_period_dates("last_month", today),
+        }
+
     try:
-        return get_dashboard_data(user["id"], sd, ed, recent_limit=limit)
+        return get_dashboard_data(
+            user["id"],
+            sd,
+            ed,
+            recent_limit=limit,
+            today_str=today.isoformat(),
+            multi_periods=multi_periods,
+        )
     except Exception as e:
         logger.error(f"Dashboard data error: {e}")
         raise HTTPException(status_code=500, detail="Failed to load dashboard data.")
 
 
+# ==================== AI Summary Cache ====================
+_ai_summary_cache: dict[str, tuple[float, str]] = {}
+_AI_SUMMARY_CACHE_TTL = 600  # 10 minutes
+
+
 @router.get("/ai-summary")
-async def ai_spending_summary(user: dict = Depends(get_current_user)):
-    """Generate an AI-powered spending summary using real data."""
-    today = date.today()
+async def ai_spending_summary(
+    client_date: Optional[str] = None,
+    user: dict = Depends(get_current_user),
+):
+    """Generate an AI-powered spending summary using real data (cached for up to 10 min)."""
+    import time
+    user_id = user["id"]
+    now = time.time()
+
+    cached = _ai_summary_cache.get(user_id)
+    if cached and (now - cached[0]) < _AI_SUMMARY_CACHE_TTL:
+        return {"summary": cached[1]}
+
+    today = _resolve_today(client_date)
     sd = today.replace(day=1).isoformat()
     ed = today.isoformat()
 
     try:
-        stats = get_summary(user["id"], sd, ed)
+        stats = get_summary(user_id, sd, ed, today_str=today.isoformat())
         if stats["expense_count"] == 0:
-            return {"summary": "No expenses recorded this month yet. Start tracking to see your summary!"}
+            summary_text = "No expenses recorded this month yet. Start tracking to see your summary!"
+        else:
+            summary_text = await generate_spending_summary(stats)
 
-        summary_text = await generate_spending_summary(stats)
+        _ai_summary_cache[user_id] = (now, summary_text)
         return {"summary": summary_text}
     except Exception as e:
         logger.error(f"AI summary error: {e}")
@@ -150,6 +196,12 @@ async def ai_spending_summary(user: dict = Depends(get_current_user)):
 # Simple in-memory cache: {user_id: (timestamp, insights_list)}
 _insights_cache: dict[str, tuple[float, list]] = {}
 _INSIGHTS_CACHE_TTL = 300  # 5 minutes
+
+
+def invalidate_analytics_cache(user_id: str):
+    """Purge in-memory AI summary and insights cache for user when expenses change."""
+    _insights_cache.pop(user_id, None)
+    _ai_summary_cache.pop(user_id, None)
 
 
 @router.get("/insights", response_model=list[Insight])

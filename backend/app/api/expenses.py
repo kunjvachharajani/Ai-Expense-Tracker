@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from app.api.auth import get_current_user
 from app.db import get_supabase_client
+from app.api.analytics import invalidate_analytics_cache
 from app.schemas import (
     ExpenseCreate,
     ExpenseUpdate,
@@ -49,6 +50,8 @@ async def create_expense(body: ExpenseCreate, user: dict = Depends(get_current_u
     try:
         result = sb.table("expenses").insert(data).execute()
         if result.data:
+            # Invalidate cached analytics so dashboard refreshes immediately
+            invalidate_analytics_cache(user["id"])
             return result.data[0]
         raise HTTPException(status_code=500, detail="Failed to save expense.")
     except HTTPException:
@@ -152,6 +155,7 @@ async def update_expense(expense_id: str, body: ExpenseUpdate, user: dict = Depe
     if not result.data:
         raise HTTPException(status_code=500, detail="Failed to update expense.")
 
+    invalidate_analytics_cache(user["id"])
     return result.data[0]
 
 
@@ -165,3 +169,4 @@ async def delete_expense(expense_id: str, user: dict = Depends(get_current_user)
         raise HTTPException(status_code=404, detail="Expense not found.")
 
     sb.table("expenses").delete().eq("id", expense_id).eq("user_id", user["id"]).execute()
+    invalidate_analytics_cache(user["id"])

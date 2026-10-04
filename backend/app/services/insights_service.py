@@ -54,12 +54,18 @@ def _prev_month(year: int, month: int):
     return year, month - 1
 
 
+INSIGHTS_EXPENSE_COLUMNS = (
+    "id, user_id, amount, currency, category, subcategory, merchant, "
+    "description, expense_date, payment_method, created_at"
+)
+
+
 def _fetch_expenses(user_id: str, start_date: str, end_date: str) -> list[dict]:
     """Fetch expenses for a user between two dates (inclusive)."""
     sb = get_supabase_client()
     result = (
         sb.table("expenses")
-        .select("*")
+        .select(INSIGHTS_EXPENSE_COLUMNS)
         .eq("user_id", user_id)
         .gte("expense_date", start_date)
         .lte("expense_date", end_date)
@@ -73,7 +79,7 @@ def _fetch_all_expenses(user_id: str) -> list[dict]:
     sb = get_supabase_client()
     result = (
         sb.table("expenses")
-        .select("*")
+        .select(INSIGHTS_EXPENSE_COLUMNS)
         .eq("user_id", user_id)
         .order("expense_date", desc=True)
         .execute()
@@ -406,29 +412,30 @@ def get_insight_facts(user_id: str, today: Optional[date] = None) -> list[dict]:
 
     current_month_str = _month_str(today)
     current_first, current_last = _month_range(today.year, today.month)
+    current_first_iso = current_first.isoformat()
+    current_last_iso = current_last.isoformat()
 
-    # Fetch current month expenses
-    current_month_expenses = _fetch_expenses(
-        user_id,
-        current_first.isoformat(),
-        current_last.isoformat(),
-    )
+    # Fetch all expenses in ONE lightweight query instead of 5 separate round-trips
+    all_expenses = _fetch_all_expenses(user_id)
 
-    # Fetch prior 3 months expenses
+    # In-memory slice for current month expenses
+    current_month_expenses = [
+        e for e in all_expenses
+        if current_first_iso <= e["expense_date"] <= current_last_iso
+    ]
+
+    # In-memory slices for prior 3 months expenses
     prior_months_expenses: dict[str, list[dict]] = {}
     y, m = today.year, today.month
     for _ in range(3):
         y, m = _prev_month(y, m)
         first, last = _month_range(y, m)
         month_key = _month_str(first)
-        prior_months_expenses[month_key] = _fetch_expenses(
-            user_id,
-            first.isoformat(),
-            last.isoformat(),
-        )
-
-    # Fetch all expenses (for merchant history and recurring detection)
-    all_expenses = _fetch_all_expenses(user_id)
+        f_iso, l_iso = first.isoformat(), last.isoformat()
+        prior_months_expenses[month_key] = [
+            e for e in all_expenses
+            if f_iso <= e["expense_date"] <= l_iso
+        ]
 
     # Fetch current month budgets
     budgets = _fetch_budgets(user_id, current_month_str)
