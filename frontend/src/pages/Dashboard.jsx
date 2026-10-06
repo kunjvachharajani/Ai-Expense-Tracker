@@ -32,6 +32,7 @@ export default function Dashboard() {
   const [insights, setInsights] = useState([]);
   const [period, setPeriod] = useState('month');
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
   const location = useLocation();
   const loadIdRef = useRef(0);
   const periodsDataRef = useRef(null);
@@ -62,6 +63,10 @@ export default function Dashboard() {
       // 1 single database query computes active period + pre-calculates week, month, last_month
       const dashData = await getDashboardData(targetPeriod, 10);
       if (thisLoadId !== loadIdRef.current) return;
+      if (!dashData?.summary || typeof dashData.summary.total_spent !== 'number') {
+        throw new Error('The dashboard API returned incomplete spending data. Please retry or contact support.');
+      }
+      setLoadError('');
 
       if (dashData.periods) {
         periodsDataRef.current = dashData.periods;
@@ -75,6 +80,9 @@ export default function Dashboard() {
       setRecent(dashData.recent || []);
     } catch (err) {
       console.error('Dashboard load error:', err);
+      if (thisLoadId === loadIdRef.current) {
+        setLoadError(err?.message || 'Could not load dashboard data. Please try again.');
+      }
     } finally {
       if (thisLoadId === loadIdRef.current) {
         setLoading(false);
@@ -134,6 +142,16 @@ export default function Dashboard() {
     return <div className="loading-page"><span className="loading-spinner lg" /><p>Loading dashboard...</p></div>;
   }
 
+  if (loadError && !summary) {
+    return (
+      <div className="empty-state">
+        <h3>Dashboard data could not be loaded</h3>
+        <p role="alert">{loadError}</p>
+        <button className="btn btn-primary" onClick={() => loadData(true)}>Retry</button>
+      </div>
+    );
+  }
+
   const categoryData = summary ? Object.entries(summary.category_breakdown || {}).map(([name, value]) => ({
     name, value: Math.round(value), fill: CATEGORY_COLORS[name] || '#6b7280',
   })) : [];
@@ -154,6 +172,12 @@ export default function Dashboard() {
 
   return (
     <div>
+      {loadError && (
+        <div className="alert alert-error" role="alert" style={{ marginBottom: 20 }}>
+          Dashboard refresh failed: {loadError}
+          <button className="btn btn-secondary btn-sm" style={{ marginLeft: 12 }} onClick={() => loadData(true)}>Retry</button>
+        </div>
+      )}
       {/* AI Summary */}
       {aiSummary && (
         <div className="ai-summary">
