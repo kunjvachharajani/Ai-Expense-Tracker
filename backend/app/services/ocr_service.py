@@ -43,23 +43,34 @@ async def extract_text_from_image(image_bytes: bytes, filename: str) -> str:
     if ext != "pdf":
         try:
             import io
-            from PIL import Image
-            im = Image.open(io.BytesIO(image_bytes))
-            if im.mode in ("RGBA", "P", "LA"):
-                im = im.convert("RGB")
-            
-            # 1200px is the optimal resolution for OCR: keeps file under 200KB while crystal clear
-            max_dim = 1200
-            if max(im.size) > max_dim:
-                im.thumbnail((max_dim, max_dim), Image.Resampling.LANCZOS)
-            
-            buf = io.BytesIO()
-            im.save(buf, format="JPEG", quality=82, optimize=True)
-            image_bytes = buf.getvalue()
-            ext = "jpg"
-            filename = f"{filename.rsplit('.', 1)[0]}.jpg"
+            from PIL import Image, ImageOps
+            original = Image.open(io.BytesIO(image_bytes))
+            orientation = original.getexif().get(274, 1)
+            already_optimized = (
+                ext in ("jpg", "jpeg")
+                and original.mode == "RGB"
+                and orientation == 1
+                and max(original.size) <= 2000
+            )
+            if not already_optimized:
+                im = ImageOps.exif_transpose(original)
+                if im.mode != "RGB":
+                    im = im.convert("RGB")
+
+                # Preserve small printed totals and item text; avoid over-compressing receipts.
+                max_dim = 2000
+                if max(im.size) > max_dim:
+                    im.thumbnail((max_dim, max_dim), Image.Resampling.LANCZOS)
+
+                buf = io.BytesIO()
+                im.save(buf, format="JPEG", quality=90, optimize=True)
+                image_bytes = buf.getvalue()
+                ext = "jpg"
+                filename = f"{filename.rsplit('.', 1)[0]}.jpg"
         except Exception as comp_err:
             logger.warning(f"Failed to compress image before OCR: {comp_err}")
+            if ext in ("webp", "tif", "tiff"):
+                raise ValueError("Could not convert this image for OCR. Please upload it as JPG or PNG.")
 
     content_type_map = {
         "jpg": "image/jpeg",
@@ -67,6 +78,8 @@ async def extract_text_from_image(image_bytes: bytes, filename: str) -> str:
         "png": "image/png",
         "gif": "image/gif",
         "bmp": "image/bmp",
+        "tif": "image/tiff",
+        "tiff": "image/tiff",
         "webp": "image/webp",
         "pdf": "application/pdf",
     }
@@ -78,6 +91,8 @@ async def extract_text_from_image(image_bytes: bytes, filename: str) -> str:
         filetype_param = "JPG"
     elif ext_lower in ("png", "gif", "bmp", "pdf"):
         filetype_param = ext_lower.upper()
+    elif ext_lower in ("tif", "tiff"):
+        filetype_param = "TIF"
     else:
         filetype_param = "JPG"
 
@@ -85,7 +100,9 @@ async def extract_text_from_image(image_bytes: bytes, filename: str) -> str:
     resp = None
     engines = ["1", "2"]  # Engine 1 is fastest, Engine 2 is secondary
 
-    async with httpx.AsyncClient(timeout=15.0) as client:
+    # Two OCR engines must remain within the serverless function's 30-second
+    # budget (vision + OCR fallback + text parsing share that request budget).
+    async with httpx.AsyncClient(timeout=5.0) as client:
         for engine in engines:
             try:
                 resp = await client.post(
@@ -109,8 +126,13 @@ async def extract_text_from_image(image_bytes: bytes, filename: str) -> str:
                 if not data.get("IsErroredOnProcessing"):
                     parsed_results = data.get("ParsedResults", [])
                     if parsed_results:
-                        text = parsed_results[0].get("ParsedText", "").strip()
-                        if text and len(text) >= 5:
+                        pages = []
+                        for item in parsed_results:
+                            page_text = item.get("ParsedText") if isinstance(item, dict) else None
+                            if isinstance(page_text, str) and page_text.strip():
+                                pages.append(page_text.strip())
+                        text = "\n\n".join(pages)
+                        if len(text) >= 5:
                             return text
                 else:
                     err = data.get("ErrorMessage", ["OCR processing failed"])

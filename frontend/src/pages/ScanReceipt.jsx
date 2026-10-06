@@ -5,54 +5,60 @@ import { Upload, Camera, FileText, X, Sparkles } from 'lucide-react';
 import { scanReceipt, createExpense } from '../services/api';
 import ConfirmExpenseModal from '../components/ConfirmExpenseModal';
 
+const MAX_FUNCTION_UPLOAD_BYTES = 4 * 1024 * 1024;
+
 async function prepareReceiptFile(rawFile) {
   if (rawFile.type === 'application/pdf' || rawFile.name.toLowerCase().endsWith('.pdf')) {
+    if (rawFile.size > MAX_FUNCTION_UPLOAD_BYTES) {
+      throw new Error('PDF files must be 4 MB or smaller. For larger receipts, export a compressed PDF or upload page images.');
+    }
     return rawFile;
   }
 
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     const reader = new FileReader();
+    reader.onerror = () => {
+      if (rawFile.size <= MAX_FUNCTION_UPLOAD_BYTES) resolve(rawFile);
+      else reject(new Error('This image could not be compressed below the 4 MB upload limit.'));
+    };
     reader.onload = (e) => {
       const img = new Image();
-      img.onload = () => {
-        const maxDim = 1200;
-        let { width, height } = img;
-        if (width > maxDim || height > maxDim) {
-          if (width > height) {
-            height = Math.round((height * maxDim) / width);
-            width = maxDim;
-          } else {
-            width = Math.round((width * maxDim) / height);
-            height = maxDim;
+      img.onerror = () => {
+        if (rawFile.size <= MAX_FUNCTION_UPLOAD_BYTES) resolve(rawFile);
+        else reject(new Error('This image format could not be compressed. Try JPG or PNG under 4 MB.'));
+      };
+      img.onload = async () => {
+        const maxDim = 2000;
+        const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.max(1, Math.round(img.width * scale));
+        canvas.height = Math.max(1, Math.round(img.height * scale));
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          if (rawFile.size <= MAX_FUNCTION_UPLOAD_BYTES) resolve(rawFile);
+          else reject(new Error('This image could not be compressed below the 4 MB upload limit.'));
+          return;
+        }
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+        const encode = quality => new Promise(blobResolve => {
+          canvas.toBlob(blobResolve, 'image/jpeg', quality);
+        });
+        for (const quality of [0.92, 0.86, 0.8, 0.74]) {
+          const blob = await encode(quality);
+          if (!blob) break;
+          if (blob.size <= MAX_FUNCTION_UPLOAD_BYTES) {
+            const cleanName = rawFile.name.replace(/\.[^/.]+$/, '') + '.jpg';
+            resolve(new File([blob], cleanName, { type: 'image/jpeg' }));
+            return;
           }
         }
-
-        const canvas = document.createElement('canvas');
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        ctx.fillStyle = '#FFFFFF';
-        ctx.fillRect(0, 0, width, height);
-        ctx.drawImage(img, 0, 0, width, height);
-
-        canvas.toBlob(
-          (blob) => {
-            if (!blob) {
-              resolve(rawFile);
-              return;
-            }
-            const cleanName = rawFile.name.replace(/\.[^/.]+$/, '') + '.jpg';
-            const compressed = new File([blob], cleanName, { type: 'image/jpeg' });
-            resolve(compressed);
-          },
-          'image/jpeg',
-          0.82
-        );
+        reject(new Error('This image is still too large after compression. Try a closer, cropped photo of the receipt.'));
       };
-      img.onerror = () => resolve(rawFile);
       img.src = e.target.result;
     };
-    reader.onerror = () => resolve(rawFile);
     reader.readAsDataURL(rawFile);
   });
 }
@@ -82,13 +88,13 @@ export default function ScanReceipt() {
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
-    accept: { 'image/*': ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp'], 'application/pdf': ['.pdf'] },
+    accept: { 'image/*': ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.tif', '.tiff'], 'application/pdf': ['.pdf'] },
     maxSize: 10 * 1024 * 1024,
     multiple: false,
     onDropRejected: (rejections) => {
       const err = rejections[0]?.errors[0];
       if (err?.code === 'file-too-large') setError('File too large. Maximum 10 MB.');
-      else setError('Unsupported file type. Use JPG, PNG, WebP, or PDF.');
+      else setError('Unsupported file type. Use JPG, PNG, WebP, TIFF, or PDF.');
     },
   });
 
@@ -97,7 +103,7 @@ export default function ScanReceipt() {
     setError('');
     setExtraction(null);
     setLoading(true);
-    setScanStatus('Optimizing receipt image...');
+    setScanStatus('Compressing receipt image...');
 
     try {
       const readyFile = await prepareReceiptFile(file);
@@ -151,7 +157,7 @@ export default function ScanReceipt() {
             <input {...getInputProps()} />
             <Upload size={40} />
             <p><strong>Drag & drop</strong> your receipt here, or <strong>click to browse</strong></p>
-            <p className="upload-hint">Supports JPG, PNG, PDF — Max 5 MB</p>
+            <p className="upload-hint">Supports JPG, PNG, WebP, TIFF, and PDF — images up to 10 MB (compressed for upload), PDFs up to 4 MB</p>
           </div>
         ) : (
           <div>

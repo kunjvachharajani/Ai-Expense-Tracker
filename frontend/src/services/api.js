@@ -180,7 +180,7 @@ export async function scanReceipt(file, retries = 1) {
   let res;
   for (let attempt = 0; attempt <= retries; attempt++) {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 25000);
+    const timeoutId = setTimeout(() => controller.abort(), 28000);
 
     try {
       res = await fetch(`${API_URL}/api/receipts/scan`, {
@@ -194,7 +194,7 @@ export async function scanReceipt(file, retries = 1) {
     } catch (err) {
       clearTimeout(timeoutId);
       if (err.name === 'AbortError') {
-        throw new Error('Scanning took longer than expected. Please ensure receipt is well-lit and clear.');
+        throw new Error('Receipt scanning timed out. Please try a clearer image or enter the details manually.');
       }
       if (err.name === 'TypeError' && err.message.includes('fetch')) {
         if (attempt < retries) {

@@ -5,7 +5,7 @@ import logging
 from typing import Optional, Tuple
 
 import httpx
-from PIL import Image
+from PIL import Image, ImageOps
 
 from app.config import settings
 from app.categories import CATEGORIES, CATEGORY_LIST, PAYMENT_METHODS
@@ -116,16 +116,27 @@ def _prepare_image_for_groq(image_bytes: bytes, filename: str, content_type: Opt
             raise ValueError("Could not read uploaded PDF file.")
     else:
         try:
-            im = Image.open(io.BytesIO(image_bytes))
-            if im.mode in ("RGBA", "P", "LA"):
-                im = im.convert("RGB")
-            # Resize if dimensions exceed 2048
-            max_size = 2048
-            if max(im.size) > max_size:
-                im.thumbnail((max_size, max_size))
-            buf = io.BytesIO()
-            im.save(buf, format="JPEG", quality=85)
-            img_bytes = buf.getvalue()
+            original = Image.open(io.BytesIO(image_bytes))
+            orientation = original.getexif().get(274, 1)
+            if (
+                ext in ("jpg", "jpeg")
+                and original.mode == "RGB"
+                and orientation == 1
+                and max(original.size) <= 2048
+            ):
+                # The browser already made one high-quality, orientation-corrected JPEG.
+                img_bytes = image_bytes
+            else:
+                im = ImageOps.exif_transpose(original)
+                if im.mode != "RGB":
+                    im = im.convert("RGB")
+                # Keep receipt text legible while staying within vision API limits.
+                max_size = 2048
+                if max(im.size) > max_size:
+                    im.thumbnail((max_size, max_size), Image.Resampling.LANCZOS)
+                buf = io.BytesIO()
+                im.save(buf, format="JPEG", quality=92, optimize=True)
+                img_bytes = buf.getvalue()
             mime = "image/jpeg"
         except Exception as e:
             logger.warning(f"Image normalization bypassed: {e}")
@@ -166,8 +177,10 @@ async def parse_receipt_image(
         "response_format": {"type": "json_object"},
     }
 
-    raw_content = await _call_groq_raw(payload)
+    raw_content = await _call_groq_raw(payload, timeout=9.0)
     parsed = _clean_and_decode_json(raw_content)
+    if not isinstance(parsed, dict):
+        raise ValueError("AI returned an invalid receipt response. Please retry or enter details manually.")
 
     ocr_text = parsed.pop("ocr_text", "")
     if not isinstance(ocr_text, str) or not ocr_text.strip():
@@ -219,7 +232,7 @@ async def parse_receipt_text(ocr_text: str) -> AIExpenseExtraction:
         "response_format": {"type": "json_object"},
     }
 
-    raw_content = await _call_groq_raw(payload)
+    raw_content = await _call_groq_raw(payload, timeout=6.0)
     parsed = _clean_and_decode_json(raw_content)
     return _validate_extraction_dict(parsed, ocr_text=ocr_text)
 
@@ -260,14 +273,14 @@ async def generate_spending_summary(stats: dict) -> str:
         return data["choices"][0]["message"]["content"].strip()
 
 
-async def _call_groq_raw(payload: dict) -> str:
+async def _call_groq_raw(payload: dict, timeout: float = 15.0) -> str:
     """Make the actual Groq API call and return the message content string."""
     headers = {
         "Authorization": f"Bearer {settings.GROQ_API_KEY}",
         "Content-Type": "application/json",
     }
 
-    async with httpx.AsyncClient(timeout=15.0) as client:
+    async with httpx.AsyncClient(timeout=timeout) as client:
         try:
             resp = await client.post(GROQ_API_URL, json=payload, headers=headers)
             resp.raise_for_status()
@@ -300,6 +313,9 @@ def _validate_extraction_dict(parsed: dict, ocr_text: str = "") -> AIExpenseExtr
     """Validate and normalize fields into AIExpenseExtraction schema."""
     import re
 
+    if not isinstance(parsed, dict):
+        raise ValueError("AI returned an invalid receipt response. Please retry or enter details manually.")
+
     # Normalise date
     if "date" in parsed and parsed["date"]:
         parsed["date"] = validate_date_not_future(parse_date_safe(str(parsed["date"])))
@@ -319,29 +335,65 @@ def _validate_extraction_dict(parsed: dict, ocr_text: str = "") -> AIExpenseExtr
         except (ValueError, TypeError):
             parsed["amount"] = None
 
-    # If amount is None or <= 0, try regex search in ocr_text as fallback
-    if (parsed.get("amount") is None or (isinstance(parsed.get("amount"), (int, float)) and parsed["amount"] <= 0)) and ocr_text:
-        patterns = [
-            r"(?i)\b(?:grand\s*total|final\s*amount|amount\s*payable|amount\s*due|net\s*amount|balance\s*due|total)[\s:=-]+(?:rs\.?|inr|₹|\$|€|£)?\s*([\d,]+(?:\.\d{1,2})?)",
-            r"(?i)(?:rs\.?|inr|₹|\$)\s*([\d,]+(?:\.\d{1,2})?)",
-        ]
-        for pattern in patterns:
-            match = re.search(pattern, ocr_text)
-            if match:
-                val_str = match.group(1).replace(",", "")
-                try:
-                    val = float(val_str)
-                    if val > 0:
-                        parsed["amount"] = val
-                        break
-                except (ValueError, TypeError):
-                    pass
+    # A labeled total in the transcript is stronger evidence than a model's
+    # guessed number. Prefer explicit payable/grand-total labels and never
+    # mistake an early subtotal or the first currency amount for the receipt total.
+    ocr_total = _extract_receipt_total(ocr_text) if ocr_text else None
+    if ocr_total is not None:
+        parsed["amount"] = ocr_total
 
     try:
         return AIExpenseExtraction(**parsed)
     except Exception as e:
         logger.error(f"Pydantic validation failed: {e}  |  raw={parsed}")
         raise ValueError(f"Could not validate AI response: {e}")
+
+
+def _extract_receipt_total(ocr_text: str) -> Optional[float]:
+    """Return a confidently labeled total, preferring payable/grand total lines."""
+    import re
+
+    amount_pattern = re.compile(r"(?:₹|rs\.?|inr|\$|€|£)?\s*([\d][\d,]*(?:\.\d{1,2})?)", re.IGNORECASE)
+    explicit_labels = re.compile(
+        r"\b(?:grand\s*total|amount\s*payable|payable\s*amount|amount\s*due|"
+        r"final\s*(?:amount|total|payable)|net\s*(?:amount|payable)|balance\s*due|"
+        r"total\s*(?:payable|due))\b",
+        re.IGNORECASE,
+    )
+    generic_total = re.compile(r"\btotal\b", re.IGNORECASE)
+    candidates: list[tuple[int, int, float]] = []
+    lines = ocr_text.splitlines()
+
+    for index, line in enumerate(lines):
+        if re.search(r"\bsub\s*total\b", line, re.IGNORECASE):
+            continue
+        label = explicit_labels.search(line)
+        priority = 0 if label else 1
+        if not label:
+            label = generic_total.search(line)
+        if not label:
+            continue
+
+        remainder = line[label.end():]
+        matches = list(amount_pattern.finditer(remainder))
+        if not matches and index + 1 < len(lines):
+            matches = list(amount_pattern.finditer(lines[index + 1]))
+        if not matches:
+            continue
+        raw_amount = matches[-1].group(1).replace(",", "")
+        try:
+            amount = float(raw_amount)
+        except ValueError:
+            continue
+        if amount > 0:
+            candidates.append((priority, index, amount))
+
+    if not candidates:
+        return None
+    best_priority = min(candidate[0] for candidate in candidates)
+    # Receipts often repeat the total near the footer; use the last candidate
+    # within the strongest label class.
+    return next(amount for priority, _, amount in reversed(candidates) if priority == best_priority)
 
 
 # ==================== Insight Summarization ====================

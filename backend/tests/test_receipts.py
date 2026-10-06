@@ -3,7 +3,12 @@ import io
 import pytest
 from PIL import Image
 
-from app.services.groq_service import _prepare_image_for_groq, _clean_and_decode_json, _validate_extraction_dict
+from app.services.groq_service import (
+    _prepare_image_for_groq,
+    _clean_and_decode_json,
+    _extract_receipt_total,
+    _validate_extraction_dict,
+)
 
 
 def test_prepare_image_for_groq_resizing():
@@ -65,6 +70,24 @@ def test_validate_extraction_dict_with_ocr_recovery():
     extraction = _validate_extraction_dict(raw_dict, ocr_text=ocr)
     assert extraction.amount == 350.00
     assert extraction.merchant == "Dominos"
+
+
+def test_receipt_total_prefers_grand_total_over_subtotal():
+    ocr = "Subtotal: ₹300.00\nTax: ₹50.00\nGrand Total: ₹350.00"
+    assert _extract_receipt_total(ocr) == 350.00
+
+
+def test_receipt_total_overrides_misread_vision_amount():
+    ocr = "Sub Total 300.00\nGST 50.00\nAmount Payable\n₹ 350.00"
+    extraction = _validate_extraction_dict(
+        {"amount": 300, "category": "Food", "date": "2026-09-25"},
+        ocr_text=ocr,
+    )
+    assert extraction.amount == 350.00
+
+
+def test_receipt_total_does_not_guess_from_item_prices():
+    assert _extract_receipt_total("Tea ₹20.00\nSandwich ₹80.00") is None
 
 
 def test_validate_extraction_dict_with_currency_string():
