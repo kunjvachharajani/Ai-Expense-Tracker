@@ -2,7 +2,6 @@
 Analytics API routes.
 """
 import logging
-import calendar
 from datetime import date, timedelta
 from typing import Optional, Tuple
 
@@ -30,15 +29,14 @@ def calculate_period_dates(
         return start_date, end_date
 
     if period == "week":
-        # Monday of this week through TODAY (not Sunday — we only know the past/present)
+        # Monday through today. Future dates must not count toward spending.
         start_of_week = today - timedelta(days=today.weekday())
         sd = start_of_week.isoformat()
         ed = today.isoformat()
     elif period == "month":
-        # First day of current month through last calendar day (full month)
+        # Month-to-date; future dates must not inflate totals or averages.
         sd = today.replace(day=1).isoformat()
-        _, last_day = calendar.monthrange(today.year, today.month)
-        ed = today.replace(day=last_day).isoformat()
+        ed = today.isoformat()
     elif period == "last_month":
         # Full previous calendar month
         first_this = today.replace(day=1)
@@ -60,8 +58,7 @@ def calculate_period_dates(
         ed = end_date
     else:
         sd = today.replace(day=1).isoformat()
-        _, last_day = calendar.monthrange(today.year, today.month)
-        ed = today.replace(day=last_day).isoformat()
+        ed = today.isoformat()
 
     return sd, ed
 

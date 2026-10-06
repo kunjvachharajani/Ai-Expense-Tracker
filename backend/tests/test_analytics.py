@@ -3,19 +3,19 @@ from app.api.analytics import calculate_period_dates
 
 
 def test_calculate_period_dates_week():
-    # Tuesday Sep 29, 2026 -> Monday Sep 28 to Sunday Oct 4
+    # Tuesday Sep 29, 2026 -> Monday Sep 28 through today
     test_today = date(2026, 9, 29)
     sd, ed = calculate_period_dates("week", test_today)
     assert sd == "2026-09-28"
-    assert ed == "2026-10-04"
+    assert ed == "2026-09-29"
 
 
 def test_calculate_period_dates_month():
-    # September has 30 days
+    # Current month means month-to-date.
     test_today = date(2026, 9, 15)
     sd, ed = calculate_period_dates("month", test_today)
     assert sd == "2026-09-01"
-    assert ed == "2026-09-30"
+    assert ed == "2026-09-15"
 
 
 def test_calculate_period_dates_last_month():

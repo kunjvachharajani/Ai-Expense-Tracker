@@ -3,6 +3,7 @@ Analytics service — computes spending statistics from Supabase data.
 Optimized for high performance with single-query multi-period support and light payloads.
 """
 from datetime import date
+from decimal import Decimal
 from typing import Optional, Dict, Tuple, List
 
 from app.db import get_supabase_client
@@ -11,6 +12,31 @@ EXPENSE_LIGHT_COLUMNS = (
     "id, user_id, amount, currency, category, subcategory, merchant, "
     "description, expense_date, payment_method, source, created_at"
 )
+
+# PostgREST commonly caps each response page. Analytics must read every matching
+# row or totals silently become incomplete for users with larger histories.
+ANALYTICS_PAGE_SIZE = 1000
+
+
+def _fetch_expenses(query) -> List[dict]:
+    """Fetch every row matching a Supabase query in stable pages."""
+    rows: List[dict] = []
+    offset = 0
+    while True:
+        result = query.range(offset, offset + ANALYTICS_PAGE_SIZE - 1).execute()
+        page = result.data or []
+        rows.extend(page)
+        if len(page) < ANALYTICS_PAGE_SIZE:
+            return rows
+        offset += len(page)
+
+
+def _expense_day(expense: dict) -> Optional[str]:
+    """Normalize Supabase date values to YYYY-MM-DD before comparing/grouping."""
+    value = expense.get("expense_date")
+    if not value:
+        return None
+    return str(value)[:10]
 
 
 def _compute_summary_from_expenses(
@@ -27,7 +53,7 @@ def _compute_summary_from_expenses(
         start_date: Period start in YYYY-MM-DD (used for avg_daily calculation).
         end_date:   Period end in YYYY-MM-DD (used for avg_daily calculation).
     """
-    total_spent = sum(float(e["amount"]) for e in expenses)
+    total_spent = sum((Decimal(str(e["amount"])) for e in expenses), Decimal("0"))
     count = len(expenses)
 
     # Today's spending — only meaningful when today falls inside the period.
@@ -37,7 +63,7 @@ def _compute_summary_from_expenses(
     )
     today_spent = sum(
         float(e["amount"]) for e in expenses
-        if e.get("expense_date") == today_str
+        if _expense_day(e) == today_str
     ) if today_in_period else 0.0
 
     # Category breakdown
@@ -51,7 +77,7 @@ def _compute_summary_from_expenses(
     # Daily spending trend
     daily_totals: Dict[str, float] = {}
     for e in expenses:
-        d = e.get("expense_date")
+        d = _expense_day(e)
         if d:
             daily_totals[d] = daily_totals.get(d, 0) + float(e["amount"])
 
@@ -100,15 +126,14 @@ def _compute_summary_from_expenses(
 def get_summary(user_id: str, start_date: str, end_date: str, today_str: Optional[str] = None) -> dict:
     """Calculate summary stats for a date range."""
     sb = get_supabase_client()
-    result = (
+    query = (
         sb.table("expenses")
         .select(EXPENSE_LIGHT_COLUMNS)
         .eq("user_id", user_id)
         .gte("expense_date", start_date)
         .lte("expense_date", end_date)
-        .execute()
     )
-    expenses = result.data or []
+    expenses = _fetch_expenses(query)
     current_today = today_str or date.today().isoformat()
     return _compute_summary_from_expenses(expenses, current_today, start_date, end_date)
 
@@ -168,7 +193,7 @@ def get_dashboard_data(
         query_start = start_date
         query_end = end_date
 
-    result = (
+    query = (
         sb.table("expenses")
         .select(EXPENSE_LIGHT_COLUMNS)
         .eq("user_id", user_id)
@@ -176,14 +201,13 @@ def get_dashboard_data(
         .lte("expense_date", query_end)
         .order("expense_date", desc=True)
         .order("created_at", desc=True)
-        .execute()
     )
-    all_expenses = result.data or []
+    all_expenses = _fetch_expenses(query)
 
     # Active period calculations
     active_expenses = [
         e for e in all_expenses
-        if start_date <= e["expense_date"] <= end_date
+        if (day := _expense_day(e)) is not None and start_date <= day <= end_date
     ]
     active_summary = _compute_summary_from_expenses(
         active_expenses, current_today, start_date, end_date
@@ -201,7 +225,7 @@ def get_dashboard_data(
         for p_key, (p_start, p_end) in multi_periods.items():
             p_expenses = [
                 e for e in all_expenses
-                if p_start <= e["expense_date"] <= p_end
+                if (day := _expense_day(e)) is not None and p_start <= day <= p_end
             ]
             periods_dict[p_key] = {
                 "summary": _compute_summary_from_expenses(
