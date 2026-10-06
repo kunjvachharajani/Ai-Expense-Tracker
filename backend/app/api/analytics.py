@@ -30,28 +30,29 @@ def calculate_period_dates(
         return start_date, end_date
 
     if period == "week":
-        # Monday to Sunday of the current week
+        # Monday of this week through TODAY (not Sunday — we only know the past/present)
         start_of_week = today - timedelta(days=today.weekday())
         sd = start_of_week.isoformat()
-        ed = (start_of_week + timedelta(days=6)).isoformat()
+        ed = today.isoformat()
     elif period == "month":
-        # First to last day of current calendar month
+        # First day of current month through last calendar day (full month)
         sd = today.replace(day=1).isoformat()
         _, last_day = calendar.monthrange(today.year, today.month)
         ed = today.replace(day=last_day).isoformat()
     elif period == "last_month":
-        # First to last day of previous calendar month
+        # Full previous calendar month
         first_this = today.replace(day=1)
         last_month_end = first_this - timedelta(days=1)
         sd = last_month_end.replace(day=1).isoformat()
         ed = last_month_end.isoformat()
     elif period == "three_months":
-        sd = (today - timedelta(days=90)).isoformat()
-        _, last_day = calendar.monthrange(today.year, today.month)
-        ed = today.replace(day=last_day).isoformat()
+        # Rolling 90 days ending today
+        sd = (today - timedelta(days=89)).isoformat()
+        ed = today.isoformat()
     elif period == "year":
+        # Jan 1 of current year through today (not Dec 31 — future days inflate avg)
         sd = today.replace(month=1, day=1).isoformat()
-        ed = today.replace(month=12, day=31).isoformat()
+        ed = today.isoformat()
     elif period == "custom":
         if not start_date or not end_date:
             raise HTTPException(status_code=400, detail="Custom range requires start_date and end_date.")
@@ -63,6 +64,7 @@ def calculate_period_dates(
         ed = today.replace(day=last_day).isoformat()
 
     return sd, ed
+
 
 
 def _resolve_today(client_date: Optional[str] = None) -> date:

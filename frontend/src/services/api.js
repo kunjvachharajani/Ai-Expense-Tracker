@@ -5,12 +5,19 @@
 import { supabase } from './supabaseClient';
 
 const rawApiUrl = (import.meta.env.VITE_API_URL || '').trim();
-// Automatically discard defunct onrender.com URLs
+// In production, localhost/127.0.0.1 URLs are unreachable from browsers outside the developer's
+// machine. Discard them so requests go to the same origin (empty string = relative URL).
+const isLocalhostInProd = !import.meta.env.DEV &&
+  (rawApiUrl.includes('localhost') || rawApiUrl.includes('127.0.0.1'));
 const isDefunctUrl = rawApiUrl.includes('onrender.com');
 
-const API_URL = (rawApiUrl && !isDefunctUrl)
-  ? rawApiUrl.replace(/\/+$/, '')
-  : (import.meta.env.DEV ? 'http://localhost:8000' : '');
+// Resolved API base URL:
+//  - DEV mode: use VITE_API_URL, fall back to localhost:8000
+//  - PROD mode: use VITE_API_URL only if it points to a real external host;
+//               otherwise use '' (relative URL — frontend and backend on same origin)
+const API_URL = import.meta.env.DEV
+  ? ((rawApiUrl && !isDefunctUrl) ? rawApiUrl.replace(/\/+$/, '') : 'http://localhost:8000')
+  : ((rawApiUrl && !isDefunctUrl && !isLocalhostInProd) ? rawApiUrl.replace(/\/+$/, '') : '');
 
 async function getAuthHeaders() {
   const { data: { session } } = await supabase.auth.getSession();
@@ -40,6 +47,9 @@ async function parseResponseData(res) {
 }
 
 function getUnreachableMessage() {
+  if (!API_URL && !import.meta.env.DEV) {
+    return 'Backend API URL is not configured for this deployment. Please set VITE_API_URL in your Vercel project environment variables and redeploy.';
+  }
   if (import.meta.env.DEV && (API_URL.includes('localhost') || API_URL.includes('127.0.0.1'))) {
     return 'Backend server is not running on http://localhost:8000. Please start your local backend (e.g. run uvicorn app.main:app --reload in the backend folder).';
   }

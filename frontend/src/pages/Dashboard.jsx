@@ -20,7 +20,9 @@ const formatLocalDate = (dateStr, options = { day: 'numeric', month: 'short' }) 
   return new Date(dateStr).toLocaleDateString('en-IN', options);
 };
 
-const CACHE_KEY = 'expense_tracker_dash_periods';
+const today = new Date();
+const CACHE_DATE = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+const CACHE_KEY = `expense_tracker_dash_periods_${CACHE_DATE}`;
 
 export default function Dashboard() {
   const [summary, setSummary] = useState(null);
@@ -78,7 +80,7 @@ export default function Dashboard() {
         setLoading(false);
       }
     }
-  }, [period, summary]);
+  }, [period]);
 
   // Initial load: instant display from cache + background revalidation
   useEffect(() => {

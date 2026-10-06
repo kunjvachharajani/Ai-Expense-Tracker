@@ -14,7 +14,7 @@ from app.categories import CATEGORY_LIST, PAYMENT_METHODS
 # ---------- AIExpenseExtraction Validation ----------
 
 class TestAIExpenseExtraction:
-    def test_valid_extraction(self):
+    def test_valid_extractioon(self):
         data = AIExpenseExtraction(
             amount=150.0,
             currency="INR",

@@ -13,18 +13,37 @@ EXPENSE_LIGHT_COLUMNS = (
 )
 
 
-def _compute_summary_from_expenses(expenses: List[dict], today_str: str) -> dict:
-    """Compute all spending statistics from an in-memory list of expenses."""
+def _compute_summary_from_expenses(
+    expenses: List[dict],
+    today_str: str,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+) -> dict:
+    """Compute all spending statistics from an in-memory list of expenses.
+
+    Args:
+        expenses:   List of expense dicts for the period.
+        today_str:  User's local date in YYYY-MM-DD (used for today_spent).
+        start_date: Period start in YYYY-MM-DD (used for avg_daily calculation).
+        end_date:   Period end in YYYY-MM-DD (used for avg_daily calculation).
+    """
     total_spent = sum(float(e["amount"]) for e in expenses)
     count = len(expenses)
 
-    # Today's spending
-    today_spent = sum(float(e["amount"]) for e in expenses if e["expense_date"] == today_str)
+    # Today's spending — only meaningful when today falls inside the period.
+    today_in_period = (
+        (start_date is None or start_date <= today_str) and
+        (end_date is None or today_str <= end_date)
+    )
+    today_spent = sum(
+        float(e["amount"]) for e in expenses
+        if e.get("expense_date") == today_str
+    ) if today_in_period else 0.0
 
     # Category breakdown
     category_totals: Dict[str, float] = {}
     for e in expenses:
-        cat = e.get("category", "Other")
+        cat = e.get("category") or "Other"
         category_totals[cat] = category_totals.get(cat, 0) + float(e["amount"])
 
     top_category = max(category_totals, key=category_totals.get) if category_totals else "None"
@@ -32,8 +51,9 @@ def _compute_summary_from_expenses(expenses: List[dict], today_str: str) -> dict
     # Daily spending trend
     daily_totals: Dict[str, float] = {}
     for e in expenses:
-        d = e["expense_date"]
-        daily_totals[d] = daily_totals.get(d, 0) + float(e["amount"])
+        d = e.get("expense_date")
+        if d:
+            daily_totals[d] = daily_totals.get(d, 0) + float(e["amount"])
 
     # Top merchants
     merchant_totals: Dict[str, float] = {}
@@ -43,7 +63,25 @@ def _compute_summary_from_expenses(expenses: List[dict], today_str: str) -> dict
 
     top_merchants = sorted(merchant_totals.items(), key=lambda x: x[1], reverse=True)[:5]
 
-    avg_daily = total_spent / len(daily_totals) if daily_totals else 0
+    # ── Avg daily spending ────────────────────────────────────────────────────
+    # Bug fix: previously divided by number of days-with-expenses (len(daily_totals)),
+    # which inflates the average (e.g. 3 expense-days out of 30 → 10× too high).
+    # Now divide by actual CALENDAR days elapsed in the period, clamped to today
+    # so future days in the current month/week don't dilute the result.
+    if start_date and end_date and count > 0:
+        try:
+            sd = date.fromisoformat(start_date)
+            ed = date.fromisoformat(end_date)
+            today_d = date.fromisoformat(today_str)
+            effective_end = min(ed, today_d)  # clamp to today for ongoing periods
+            calendar_days = (effective_end - sd).days + 1
+            avg_daily = total_spent / calendar_days if calendar_days > 0 else 0
+        except (ValueError, TypeError):
+            # Fallback — at least don't crash
+            avg_daily = total_spent / len(daily_totals) if daily_totals else 0
+    else:
+        avg_daily = total_spent / len(daily_totals) if daily_totals else 0
+
     highest = max((float(e["amount"]) for e in expenses), default=0)
 
     return {
@@ -72,7 +110,7 @@ def get_summary(user_id: str, start_date: str, end_date: str, today_str: Optiona
     )
     expenses = result.data or []
     current_today = today_str or date.today().isoformat()
-    return _compute_summary_from_expenses(expenses, current_today)
+    return _compute_summary_from_expenses(expenses, current_today, start_date, end_date)
 
 
 def get_recent_expenses(
@@ -147,7 +185,9 @@ def get_dashboard_data(
         e for e in all_expenses
         if start_date <= e["expense_date"] <= end_date
     ]
-    active_summary = _compute_summary_from_expenses(active_expenses, current_today)
+    active_summary = _compute_summary_from_expenses(
+        active_expenses, current_today, start_date, end_date
+    )
     active_recent = active_expenses[:recent_limit]
 
     response = {
@@ -164,7 +204,9 @@ def get_dashboard_data(
                 if p_start <= e["expense_date"] <= p_end
             ]
             periods_dict[p_key] = {
-                "summary": _compute_summary_from_expenses(p_expenses, current_today),
+                "summary": _compute_summary_from_expenses(
+                    p_expenses, current_today, p_start, p_end
+                ),
                 "recent": p_expenses[:recent_limit],
             }
         response["periods"] = periods_dict
