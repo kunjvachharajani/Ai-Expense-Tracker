@@ -177,7 +177,7 @@ copy .env.example .env       # Windows
 # SUPABASE_SERVICE_ROLE_KEY=eyJ...
 
 # Run the server
-uvicorn app.main:app --reload --port 8000
+uvicorn app.main:app --reload --port 8001
 ```
 
 ### 4. Frontend Setup
@@ -193,7 +193,7 @@ copy .env.example .env       # Windows
 # cp .env.example .env       # Mac/Linux
 
 # Edit .env:
-# VITE_API_URL=http://localhost:8000
+# VITE_API_URL=http://localhost:8001
 # VITE_SUPABASE_URL=https://xxx.supabase.co
 # VITE_SUPABASE_ANON_KEY=eyJ...
 
@@ -308,7 +308,7 @@ Receipt image
 ### Backend (any Python host)
 ```bash
 pip install -r requirements.txt
-uvicorn app.main:app --host 0.0.0.0 --port 8000
+uvicorn app.main:app --host 0.0.0.0 --port 8001
 ```
 
 ### Production Deployment (Vercel)

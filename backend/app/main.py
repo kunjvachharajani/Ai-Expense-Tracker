@@ -66,6 +66,17 @@ app.include_router(analytics_router)
 app.include_router(budgets_router)
 
 
+@app.get("/")
+async def root():
+    return {
+        "status": "online",
+        "service": "AI Receipt & Expense Tracker Backend",
+        "version": "1.0.0",
+        "docs": "/docs",
+        "health": "/api/health",
+    }
+
+
 @app.get("/api/health")
 async def health_check():
     return {"status": "ok", "service": "AI Receipt & Expense Tracker"}

@@ -8,6 +8,8 @@ import pytest
 from datetime import date
 from unittest.mock import patch, MagicMock
 
+pytestmark = pytest.mark.insights
+
 from app.services.insights_service import (
     detect_category_spikes,
     detect_new_merchants,

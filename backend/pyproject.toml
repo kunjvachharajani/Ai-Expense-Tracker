@@ -5,3 +5,13 @@ version = "0.1.0"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+filterwarnings = [
+    "ignore::DeprecationWarning:supabase.*",
+    "ignore::DeprecationWarning:gotrue.*",
+]
+markers = [
+    "receipts: Receipt OCR and vision parsing tests",
+    "validation: Schema and input validation tests",
+    "insights: Spending insights and anomaly detection tests",
+    "analytics: Analytics and period date computation tests",
+]

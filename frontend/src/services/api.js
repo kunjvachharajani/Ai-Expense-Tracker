@@ -12,11 +12,11 @@ const isLocalhostInProd = !import.meta.env.DEV &&
 const isDefunctUrl = rawApiUrl.includes('onrender.com');
 
 // Resolved API base URL:
-//  - DEV mode: use VITE_API_URL, fall back to localhost:8000
+//  - DEV mode: use VITE_API_URL, fall back to localhost:8001
 //  - PROD mode: use VITE_API_URL only if it points to a real external host;
 //               otherwise use '' (relative URL — frontend and backend on same origin)
 const API_URL = import.meta.env.DEV
-  ? ((rawApiUrl && !isDefunctUrl) ? rawApiUrl.replace(/\/+$/, '') : 'http://localhost:8000')
+  ? ((rawApiUrl && !isDefunctUrl) ? rawApiUrl.replace(/\/+$/, '') : 'http://localhost:8001')
   : ((rawApiUrl && !isDefunctUrl && !isLocalhostInProd) ? rawApiUrl.replace(/\/+$/, '') : '');
 
 async function getAuthHeaders() {
@@ -51,7 +51,7 @@ function getUnreachableMessage() {
     return 'Backend API URL is not configured for this deployment. Please set VITE_API_URL in your Vercel project environment variables and redeploy.';
   }
   if (import.meta.env.DEV && (API_URL.includes('localhost') || API_URL.includes('127.0.0.1'))) {
-    return 'Backend server is not running on http://localhost:8000. Please start your local backend (e.g. run uvicorn app.main:app --reload in the backend folder).';
+    return 'Backend server is not running on http://localhost:8001. Please start your local backend (e.g. run uvicorn app.main:app --reload --port 8001 in the backend folder).';
   }
   return 'Backend server is waking up or unreachable. Please wait a few seconds and try again.';
 }
