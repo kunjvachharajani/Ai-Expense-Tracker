@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { AnimatePresence, motion, MotionConfig, useReducedMotion } from 'framer-motion';
 import { AuthProvider, useAuth } from './hooks/useAuth';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
@@ -12,6 +13,14 @@ import Expenses from './pages/Expenses';
 import Analytics from './pages/Analytics';
 import Budgets from './pages/Budgets';
 import SettingsPage from './pages/Settings';
+import { ToastProvider } from './components/Toast';
+import './App.css';
+
+const pageEase = [0.22, 1, 0.36, 1];
+
+function AuthLoadingSkeleton() {
+  return <main className="route-loading" role="status" aria-label="Loading your account"><div className="route-loading-mark" /><div className="route-loading-line" /><div className="route-loading-line short" /><div className="route-loading-cards"><i /><i /><i /></div></main>;
+}
 
 const PAGE_TITLES = {
   '/': { title: 'Dashboard', subtitle: 'Overview of your expenses' },
@@ -27,9 +36,10 @@ function ProtectedLayout() {
   const { user, loading } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const location = useLocation();
+  const prefersReduced = useReducedMotion();
 
   if (loading) {
-    return <div className="loading-page" style={{ minHeight: '100vh' }}><span className="loading-spinner lg" /><p>Loading...</p></div>;
+    return <AuthLoadingSkeleton />;
   }
 
   if (!user) {
@@ -44,7 +54,16 @@ function ProtectedLayout() {
       <div className="main-content">
         <Header title={pageInfo.title} subtitle={pageInfo.subtitle} onMenuClick={() => setSidebarOpen(true)} />
         <div className="page-content">
-          <Routes>
+          <AnimatePresence mode="wait" initial={false}>
+            <motion.div
+              className="route-transition"
+              key={location.pathname}
+              initial={prefersReduced ? false : { opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={prefersReduced ? { opacity: 0 } : { opacity: 0, y: 10 }}
+              transition={prefersReduced ? { duration: 0 } : { duration: 0.28, ease: pageEase }}
+            >
+          <Routes location={location}>
             <Route path="/" element={<Dashboard />} />
             <Route path="/add-expense" element={<AddExpense />} />
             <Route path="/scan-receipt" element={<ScanReceipt />} />
@@ -53,6 +72,8 @@ function ProtectedLayout() {
             <Route path="/budgets" element={<Budgets />} />
             <Route path="/settings" element={<SettingsPage />} />
           </Routes>
+            </motion.div>
+          </AnimatePresence>
         </div>
       </div>
     </div>
@@ -63,7 +84,7 @@ function AuthRoutes() {
   const { user, loading } = useAuth();
 
   if (loading) {
-    return <div className="loading-page" style={{ minHeight: '100vh' }}><span className="loading-spinner lg" /></div>;
+    return <AuthLoadingSkeleton />;
   }
 
   if (user) {
@@ -82,22 +103,27 @@ function AuthRoutes() {
 export default function App() {
   return (
     <BrowserRouter>
-      <AuthProvider>
-        <AppRoutes />
-      </AuthProvider>
+      <MotionConfig reducedMotion="user">
+        <AuthProvider>
+          <ToastProvider>
+            <AppRoutes />
+          </ToastProvider>
+        </AuthProvider>
+      </MotionConfig>
     </BrowserRouter>
   );
 }
 
 function AppRoutes() {
   const { user, loading } = useAuth();
+  const location = useLocation();
 
   if (loading) {
-    return <div className="loading-page" style={{ minHeight: '100vh' }}><span className="loading-spinner lg" /></div>;
+    return <AuthLoadingSkeleton />;
   }
 
   return (
-    <Routes>
+    <Routes location={location}>
       <Route path="/login" element={user ? <Navigate to="/" /> : <Login />} />
       <Route path="/signup" element={user ? <Navigate to="/" /> : <Signup />} />
       <Route path="/*" element={user ? <ProtectedLayout /> : <Navigate to="/login" />} />

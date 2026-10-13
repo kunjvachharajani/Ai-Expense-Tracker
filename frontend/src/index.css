@@ -1,60 +1,78 @@
 /* ============================================================
    AI Receipt & Expense Tracker — Design System
-   Clean, white, modern SaaS design
+   Cool dark expense tracker design system
    ============================================================ */
 
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
 :root {
-  /* Colors */
-  --white: #ffffff;
-  --bg: #f8f9fb;
-  --text-primary: #1a1d23;
-  --text-secondary: #6b7280;
-  --text-muted: #9ca3af;
-  --border: #e5e7eb;
-  --border-light: #f3f4f6;
+  /* Core surfaces */
+  --bg-base: #0D1118;
+  --bg-surface: #151B24;
+  --bg-surface-elevated: #202936;
+  --border-subtle: #293341;
 
-  /* Brand */
-  --primary: #4f46e5;
-  --primary-hover: #4338ca;
-  --primary-light: #eef2ff;
-  --primary-bg: #f0f0ff;
+  /* Brand: restrained teal, distinct from category colors */
+  --accent-primary: #43C6AC;
+  --accent-secondary: #E8A85A;
+  --text-primary: #E7ECF2;
+  --text-secondary: #A7B1BE;
+  --text-muted: #758191;
 
   /* Status */
-  --success: #10b981;
-  --success-light: #ecfdf5;
-  --warning: #f59e0b;
-  --warning-light: #fffbeb;
-  --error: #ef4444;
-  --error-light: #fef2f2;
-  --info: #3b82f6;
-  --info-light: #eff6ff;
+  --success: #55C99A;
+  --success-light: #18372F;
+  --warning: #E8B45B;
+  --warning-light: #382E1C;
+  --error: #E87979;
+  --error-light: #3A2328;
+  --info: #70B6D8;
+  --info-light: #1D3441;
 
-  /* Category colors */
-  --cat-food: #f97316;
-  --cat-transport: #3b82f6;
-  --cat-shopping: #8b5cf6;
-  --cat-bills: #ef4444;
-  --cat-entertainment: #ec4899;
-  --cat-health: #10b981;
-  --cat-education: #06b6d4;
-  --cat-travel: #f59e0b;
-  --cat-subscriptions: #6366f1;
-  --cat-personal: #d946ef;
-  --cat-home: #84cc16;
-  --cat-other: #6b7280;
+  /* Fixed category colors (match backend/app/categories.py) */
+  --cat-food: #F28C5B;
+  --cat-transport: #70B6D8;
+  --cat-shopping: #B39AE8;
+  --cat-bills: #E87979;
+  --cat-entertainment: #D982B5;
+  --cat-health: #55C99A;
+  --cat-education: #56C3C1;
+  --cat-travel: #E8B45B;
+  --cat-subscriptions: #8799E8;
+  --cat-personal: #C98AB9;
+  --cat-home: #A9C66B;
+  --cat-other: #9AA5B2;
+
+  /* Existing component aliases, retained so this foundation is non-breaking */
+  --white: var(--bg-surface);
+  --bg: var(--bg-base);
+  --border: var(--border-subtle);
+  --border-light: #222B37;
+  --primary: var(--accent-primary);
+  --primary-hover: #62D6BD;
+  --primary-light: #193832;
+  --primary-bg: #172E2B;
+
+  /* Type scale */
+  --text-xs: 0.75rem;
+  --text-sm: 0.875rem;
+  --text-base: 1rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.25rem;
+  --text-2xl: 1.5rem;
+  --text-3xl: 2rem;
 
   /* Spacing */
   --radius-sm: 6px;
   --radius: 10px;
+  --radius-md: var(--radius);
   --radius-lg: 14px;
   --radius-xl: 18px;
 
-  --shadow-sm: 0 1px 2px rgba(0,0,0,0.04);
-  --shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
-  --shadow-md: 0 4px 6px -1px rgba(0,0,0,0.06), 0 2px 4px rgba(0,0,0,0.04);
-  --shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.06), 0 4px 6px rgba(0,0,0,0.03);
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.2);
+  --shadow: 0 1px 3px rgba(0,0,0,0.24), 0 1px 2px rgba(0,0,0,0.16);
+  --shadow-md: 0 4px 10px rgba(0,0,0,0.28), 0 2px 4px rgba(0,0,0,0.18);
+  --shadow-lg: 0 12px 28px rgba(0,0,0,0.34), 0 4px 10px rgba(0,0,0,0.2);
 
   /* Sidebar */
   --sidebar-width: 260px;

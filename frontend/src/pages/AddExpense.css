@@ -1,0 +1,84 @@
+.add-expense-page { display: grid; gap: 22px; }
+.add-expense-heading h1 { color: var(--text-primary); font-size: var(--text-3xl); letter-spacing: -0.04em; }
+.add-expense-heading p { margin-top: 6px; color: var(--text-secondary); font-size: var(--text-sm); }
+.add-expense-steps { display: flex; align-items: center; gap: 8px; margin-top: 18px; color: var(--text-muted); font-size: var(--text-xs); }
+.add-expense-step { display: inline-flex; align-items: center; gap: 6px; }
+.add-expense-step span:first-child { display: grid; place-items: center; width: 22px; height: 22px; border: 1px solid var(--border-subtle); border-radius: 50%; color: var(--text-secondary); font-size: 0.68rem; }
+.add-expense-step.active { color: var(--accent-primary); }
+.add-expense-step.active span:first-child { border-color: var(--accent-primary); background: color-mix(in srgb, var(--accent-primary) 12%, var(--bg-surface)); color: var(--accent-primary); }
+.add-expense-layout { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(265px, 0.85fr); align-items: start; gap: 16px; }
+.add-expense-compose { min-width: 0; padding: clamp(20px, 3vw, 34px); border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); background: var(--bg-surface); box-shadow: 0 14px 40px color-mix(in srgb, var(--accent-primary) 5%, transparent); }
+.add-expense-compose-title { color: var(--text-primary); font-size: var(--text-xl); font-weight: 650; letter-spacing: -0.02em; }
+.add-expense-compose-copy { margin-top: 7px; margin-bottom: 22px; color: var(--text-secondary); font-size: var(--text-sm); }
+.add-expense-textarea { width: 100%; min-height: 160px; padding: 16px; resize: vertical; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); outline: none; background: var(--bg-base); color: var(--text-primary); font: inherit; font-size: var(--text-base); line-height: 1.6; transition: border-color 0.15s ease, box-shadow 0.15s ease; }
+.add-expense-textarea::placeholder { color: var(--text-muted); }
+.add-expense-textarea:focus { border-color: var(--accent-primary); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-primary) 12%, transparent); }
+.add-expense-submit { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 14px; }
+.add-expense-hint { color: var(--text-muted); font-size: var(--text-xs); }
+.add-expense-side { display: grid; gap: 14px; }
+.add-expense-method { display: flex; align-items: flex-start; gap: 12px; padding: 17px; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); background: var(--bg-surface); color: var(--text-primary); text-align: left; cursor: pointer; }
+.add-expense-method:hover { border-color: color-mix(in srgb, var(--accent-primary) 38%, var(--border-subtle)); }
+.add-expense-method-icon { display: grid; place-items: center; width: 38px; height: 38px; flex-shrink: 0; border-radius: var(--radius-md); color: var(--accent-primary); background: color-mix(in srgb, var(--accent-primary) 11%, var(--bg-base)); }
+.add-expense-method-title { font-size: var(--text-sm); font-weight: 650; }
+.add-expense-method-copy { margin-top: 4px; color: var(--text-muted); font-size: var(--text-xs); line-height: 1.45; }
+.add-expense-examples { padding: 18px; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); background: var(--bg-surface); }
+.add-expense-example-list { display: grid; gap: 7px; margin-top: 11px; }
+.add-expense-example { width: 100%; padding: 10px 11px; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); background: var(--bg-base); color: var(--text-secondary); font-size: var(--text-xs); line-height: 1.45; text-align: left; cursor: pointer; }
+.add-expense-example:hover { border-color: var(--accent-primary); color: var(--text-primary); }
+.add-expense-ai-skeleton { display: grid; gap: 9px; margin-top: 18px; padding: 16px; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); background: var(--bg-base); }
+.add-expense-ai-skeleton span { position: relative; height: 12px; overflow: hidden; border-radius: var(--radius-sm); background: var(--bg-surface-elevated); }
+.add-expense-ai-skeleton span::after { content: ''; position: absolute; inset: 0; transform: translateX(-100%); background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--text-primary) 6%, transparent), transparent); animation: add-expense-shimmer 1.4s infinite; }
+@keyframes add-expense-shimmer { to { transform: translateX(100%); } }
+
+/* AI "thinking" state */
+.add-expense-ai-thinking {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 18px;
+  padding: 16px 18px;
+  border: 1px solid color-mix(in srgb, var(--accent-primary) 22%, var(--border-subtle));
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--accent-primary) 5%, var(--bg-base));
+  color: var(--accent-primary);
+  font-size: var(--text-sm);
+}
+.thinking-sparkle {
+  flex-shrink: 0;
+  animation: thinking-pulse 1.6s ease-in-out infinite;
+}
+@keyframes thinking-pulse {
+  0%, 100% { opacity: 0.5; transform: scale(0.9); }
+  50% { opacity: 1; transform: scale(1.1); }
+}
+.thinking-label {
+  flex: 1;
+  color: var(--text-secondary);
+}
+.thinking-dots {
+  display: flex;
+  gap: 4px;
+}
+.thinking-dots span {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent-primary);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .thinking-sparkle { animation: none; }
+  .thinking-dots span { opacity: 1 !important; }
+}
+.add-expense-success { display: flex; align-items: center; gap: 9px; padding: 12px 14px; border: 1px solid color-mix(in srgb, var(--success) 30%, var(--border-subtle)); border-radius: var(--radius-md); background: var(--success-light); color: var(--success); font-size: var(--text-sm); }
+
+@media (max-width: 820px) { .add-expense-layout { grid-template-columns: 1fr; } .add-expense-side { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 600px) {
+  .add-expense-page { gap: 17px; }
+  .add-expense-heading h1 { font-size: var(--text-2xl); }
+  .add-expense-steps { gap: 5px; flex-wrap: wrap; }
+  .add-expense-step { gap: 4px; }
+  .add-expense-compose { padding: 19px; }
+  .add-expense-textarea { min-height: 145px; }
+  .add-expense-side { grid-template-columns: 1fr; }
+}

@@ -1,9 +1,13 @@
 import { useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useDropzone } from 'react-dropzone';
-import { Upload, Camera, FileText, X, Sparkles } from 'lucide-react';
+import { AnimatePresence, motion } from 'framer-motion';
+import { Upload, Camera, FileText, X, Sparkles, CheckCircle2, Sun, Focus, ShieldCheck } from 'lucide-react';
 import { scanReceipt, createExpense } from '../services/api';
 import ConfirmExpenseModal from '../components/ConfirmExpenseModal';
+import MagneticButton from '../components/MagneticButton';
+import { useToast } from '../components/Toast';
+import './ScanReceipt.css';
 
 const MAX_FUNCTION_UPLOAD_BYTES = 4 * 1024 * 1024;
 
@@ -65,6 +69,7 @@ async function prepareReceiptFile(rawFile) {
 
 export default function ScanReceipt() {
   const navigate = useNavigate();
+  const toast = useToast();
   const [file, setFile] = useState(null);
   const [preview, setPreview] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -128,12 +133,14 @@ export default function ScanReceipt() {
       data.ocr_text = ocrText;
       await createExpense(data);
       setSuccess('Expense saved successfully!');
+      toast.success('Expense saved!');
       setExtraction(null);
       setFile(null);
       setPreview(null);
       setTimeout(() => navigate('/', { state: { refreshedAt: Date.now() } }), 500);
     } catch (err) {
       setError(err.message || 'Failed to save.');
+      toast.error(err.message || 'Failed to save expense.');
     } finally {
       setSaving(false);
     }
@@ -148,80 +155,59 @@ export default function ScanReceipt() {
   };
 
   return (
-    <div>
-      <div className="card" style={{ maxWidth: 640 }}>
-        <h3 className="card-title" style={{ marginBottom: 20 }}>Upload Receipt</h3>
+    <div className="scan-receipt-page">
+      <header className="scan-receipt-heading"><div className="dashboard-panel-eyebrow">Camera to ledger</div><h1>Scan a receipt</h1><p>Drop in a photo or PDF. We’ll extract the details for you to review.</p></header>
 
-        {!file ? (
-          <div {...getRootProps()} className={`upload-area ${isDragActive ? 'active' : ''}`}>
-            <input {...getInputProps()} />
-            <Upload size={40} />
-            <p><strong>Drag & drop</strong> your receipt here, or <strong>click to browse</strong></p>
-            <p className="upload-hint">Supports JPG, PNG, WebP, TIFF, and PDF — images up to 10 MB (compressed for upload), PDFs up to 4 MB</p>
-          </div>
-        ) : (
-          <div>
-            <div style={{ position: 'relative', display: 'inline-block' }}>
-              {preview && file.type.startsWith('image/') && (
-                <img src={preview} alt="Receipt preview" className="image-preview" />
-              )}
-              {file.type === 'application/pdf' && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: 20, background: 'var(--bg)', borderRadius: 'var(--radius)', border: '1px solid var(--border)' }}>
-                  <FileText size={32} color="var(--text-muted)" />
-                  <span>{file.name}</span>
-                </div>
-              )}
-              <button
-                onClick={clearFile}
-                className="btn btn-icon btn-secondary"
-                style={{ position: 'absolute', top: 8, right: 8, background: 'white', borderRadius: '50%' }}
-              >
-                <X size={16} />
-              </button>
+      {success && <motion.div className="scan-receipt-success" initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }}><CheckCircle2 size={17} />{success}</motion.div>}
+
+      <div className="scan-receipt-layout">
+        <motion.section className="scan-receipt-panel" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.38, ease: 'easeOut' }}>
+          <h2 className="scan-receipt-panel-title">{file ? 'Receipt ready to scan' : 'Add your receipt'}</h2>
+          <p className="scan-receipt-panel-copy">Images up to 10 MB are optimized before upload. PDFs must be 4 MB or less.</p>
+
+          {!file ? (
+            <div {...getRootProps()} className={`scan-dropzone ${isDragActive ? 'active' : ''}`}>
+              <input {...getInputProps()} />
+              <div className="scan-dropzone-content">
+                <span className="scan-upload-icon"><Upload size={25} /></span>
+                <h3 className="scan-dropzone-title">{isDragActive ? 'Drop it here' : 'Drag and drop your receipt'}</h3>
+                <p className="scan-dropzone-copy">or click anywhere in this area to choose an image or PDF from your device.</p>
+                <span className="scan-dropzone-hint"><FileText size={13} /> JPG · PNG · WebP · TIFF · PDF</span>
+              </div>
             </div>
-
-            <div style={{ marginTop: 16, display: 'flex', gap: 10 }}>
-              <button className="btn btn-primary btn-lg" onClick={handleScan} disabled={loading}>
-                {loading ? <><span className="loading-spinner" /> {scanStatus || 'Scanning...'}</> : <><Sparkles size={18} /> Scan Receipt</>}
-              </button>
-              <button className="btn btn-secondary" onClick={clearFile} disabled={loading}>Change File</button>
+          ) : (
+            <div>
+              <div className="scan-preview-frame">
+                {preview && file.type.startsWith('image/') && <img src={preview} alt="Receipt preview" className="scan-preview-image" />}
+                {file.type === 'application/pdf' && <div className="scan-pdf-card"><FileText size={32} color="var(--accent-primary)" /><div style={{ minWidth: 0 }}><div style={{ color: 'var(--text-primary)', fontWeight: 600 }}>PDF receipt</div><div className="scan-file-name" style={{ color: 'var(--text-muted)', fontSize: 'var(--text-xs)', marginTop: 3 }}>{file.name}</div></div></div>}
+                <button type="button" onClick={clearFile} className="btn btn-icon scan-preview-remove" aria-label="Remove receipt"><X size={16} /></button>
+              </div>
+              <div className="scan-file-info"><span className="scan-file-name">{file.name}</span><span>{(file.size / 1024 / 1024).toFixed(1)} MB</span></div>
+              <div className="scan-actions">
+                <MagneticButton type="button" className="btn btn-primary btn-lg" onClick={handleScan} disabled={loading}><Sparkles size={17} /> Scan receipt</MagneticButton>
+                <button type="button" className="btn btn-secondary" onClick={clearFile} disabled={loading}>Change file</button>
+              </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {/* Camera option hint for mobile */}
-        <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: 12 }}>
-          <Camera size={14} style={{ verticalAlign: 'middle' }} /> On mobile, you can use the camera to take a photo directly.
-        </p>
+          {loading && <motion.div key={scanStatus.startsWith('Scanning') ? 'reading' : 'preparing'} className={`scan-progress ${scanStatus.startsWith('Scanning') ? 'scan-progress-reading' : 'scan-progress-upload'}`} role="status" aria-label={scanStatus || 'Scanning receipt'} initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }} transition={{ duration: 0.2 }}>
+            <div className="scan-progress-title"><Sparkles size={15} />{scanStatus.startsWith('Scanning') ? 'Reading receipt with AI' : 'Preparing receipt for upload'}</div>
+            {scanStatus.startsWith('Scanning') ? <div className="scan-reading-state"><span className="scan-reading-pulse" />Checking merchant, date, and totals…</div> : <div className="scan-upload-track"><motion.span initial={{ scaleX: 0.12 }} animate={{ scaleX: 0.82 }} transition={{ duration: 0.8, ease: 'easeInOut', repeat: Infinity, repeatType: 'reverse' }} /></div>}
+          </motion.div>}
 
-        {error && <div className="alert alert-error" style={{ marginTop: 16 }}>{error}</div>}
-        {success && <div className="alert alert-success" style={{ marginTop: 16 }}>{success}</div>}
+          {error && <div className="alert alert-error scan-receipt-alert" role="alert">{error}</div>}
 
-        {/* OCR text viewer */}
-        {ocrText && (
-          <div style={{ marginTop: 20 }}>
-            <button className="btn btn-secondary btn-sm" onClick={() => setShowOcr(!showOcr)}>
-              <FileText size={14} /> {showOcr ? 'Hide' : 'View'} OCR Text
-            </button>
-            {showOcr && (
-              <pre style={{ marginTop: 10, padding: 16, background: 'var(--bg)', borderRadius: 'var(--radius)', border: '1px solid var(--border)', fontSize: '0.82rem', whiteSpace: 'pre-wrap', maxHeight: 200, overflow: 'auto' }}>
-                {ocrText}
-              </pre>
-            )}
-          </div>
-        )}
+          {ocrText && <div className="scan-ocr"><button type="button" className="btn btn-secondary btn-sm" onClick={() => setShowOcr(!showOcr)}><FileText size={14} /> {showOcr ? 'Hide extracted text' : 'View extracted text'}</button>{showOcr && <pre className="scan-ocr-text">{ocrText}</pre>}</div>}
+        </motion.section>
+
+        <aside className="scan-receipt-aside">
+          <section className="scan-tip"><div className="scan-tip-header"><Sun size={16} color="var(--warning)" /> Get a clearer scan</div><p className="scan-tip-copy">A few small changes can help the scanner read totals and line items accurately.</p><ul className="scan-tip-list"><li><CheckCircle2 size={14} color="var(--success)" />Use bright, even light</li><li><Focus size={14} color="var(--info)" />Keep the full receipt in frame</li><li><ReceiptText size={14} color="var(--accent-primary)" />Place it flat and avoid glare</li></ul></section>
+          <section className="scan-tip"><div className="scan-tip-header"><ShieldCheck size={16} color="var(--accent-primary)" /> Review before saving</div><p className="scan-tip-copy">Extracted details open in a review step. Check the amount, date, and category before confirming.</p></section>
+          <section className="scan-tip"><div className="scan-tip-header"><Camera size={16} color="var(--cat-transport)" /> Using a phone?</div><p className="scan-tip-copy">On mobile, choose the camera from the file picker to capture a receipt directly.</p></section>
+        </aside>
       </div>
 
-      {/* Confirm modal */}
-      {extraction && (
-        <ConfirmExpenseModal
-          data={extraction}
-          onConfirm={handleConfirm}
-          onCancel={() => setExtraction(null)}
-          loading={saving}
-          source="receipt"
-        />
-      )}
+      <AnimatePresence>{extraction && <ConfirmExpenseModal data={extraction} onConfirm={handleConfirm} onCancel={() => setExtraction(null)} loading={saving} source="receipt" />}</AnimatePresence>
     </div>
   );
 }

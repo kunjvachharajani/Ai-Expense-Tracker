@@ -1,0 +1,98 @@
+.confirm-expense-overlay {
+  background: color-mix(in srgb, var(--bg-base) 82%, transparent);
+  z-index: 1200;
+}
+
+.confirm-expense-modal {
+  width: min(100% - 32px, 620px);
+  max-height: min(88vh, 820px);
+  overflow-y: auto;
+  padding: clamp(20px, 4vw, 32px);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  box-shadow: 0 22px 70px color-mix(in srgb, var(--accent-primary) 14%, transparent);
+}
+
+.confirm-expense-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.confirm-expense-amount {
+  padding: 18px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--bg-base);
+}
+
+.confirm-expense-amount .result-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.confirm-expense-currency {
+  color: var(--text-secondary);
+  font-size: var(--text-lg);
+}
+
+.confirm-expense-amount-input {
+  width: 150px;
+  text-align: right;
+  font-size: var(--text-xl);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.confirm-expense-modal .modal-actions {
+  position: sticky;
+  bottom: -32px;
+  margin: 24px calc(clamp(20px, 4vw, 32px) * -1) calc(clamp(20px, 4vw, 32px) * -1);
+  padding: 16px clamp(20px, 4vw, 32px);
+  border-top: 1px solid var(--border-subtle);
+  background: var(--bg-surface);
+}
+
+.confirm-expense-modal .modal-actions .btn-success {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+@media (max-width: 560px) {
+  .confirm-expense-modal {
+    width: calc(100% - 20px);
+    max-height: 94vh;
+    padding: 20px 16px;
+    border-radius: var(--radius-md);
+  }
+  .confirm-expense-modal .modal-actions {
+    bottom: -20px;
+    margin-right: -16px;
+    margin-left: -16px;
+    margin-bottom: -20px;
+    padding-right: 16px;
+    padding-left: 16px;
+  }
+}
+
+/* Field edit acknowledgement flash */
+.confirm-field-flash {
+  animation: confirm-flash 0.6s ease-out;
+}
+
+@keyframes confirm-flash {
+  0% { background-color: color-mix(in srgb, var(--accent-primary) 14%, transparent); }
+  100% { background-color: transparent; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .confirm-field-flash { animation: none; }
+}
+

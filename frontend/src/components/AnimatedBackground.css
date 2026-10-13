@@ -1,0 +1,31 @@
+.animated-background {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+  user-select: none;
+  contain: paint;
+}
+
+.animated-background-blob {
+  position: absolute;
+  width: var(--blob-size);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: radial-gradient(ellipse at center, color-mix(in srgb, var(--blob-color) var(--blob-opacity), transparent) 0%, color-mix(in srgb, var(--blob-color) var(--blob-mid-opacity), transparent) 38%, transparent 70%);
+  filter: blur(90px);
+  pointer-events: none;
+  will-change: transform;
+}
+
+.animated-background-full { border-radius: inherit; }
+.animated-background-band { border-radius: inherit; }
+
+@media (max-width: 680px) {
+  .animated-background-blob { filter: blur(80px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animated-background-blob { will-change: auto; }
+}

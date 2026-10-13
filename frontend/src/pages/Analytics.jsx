@@ -1,21 +1,32 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line } from 'recharts';
-import { TrendingUp, DollarSign, ShoppingBag, Calendar } from 'lucide-react';
+import { motion } from 'framer-motion';
+import { Area, AreaChart, Bar, BarChart, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
+import { IndianRupee, TrendingUp, ShoppingBag, Calendar, ArrowUpRight, ChartNoAxesCombined, Store, Layers3 } from 'lucide-react';
 import { getAnalyticsSummary, onExpenseChanged } from '../services/api';
+import { ChartTooltip, CountUp, DashboardSkeleton, EmptyChart, spring } from '../components/DashboardPrimitives';
+import Reveal from '../components/Reveal';
+import './Analytics.css';
 
 const CATEGORY_COLORS = {
-  Food: '#f97316', Transport: '#3b82f6', Shopping: '#8b5cf6', Bills: '#ef4444',
-  Entertainment: '#ec4899', Health: '#10b981', Education: '#06b6d4', Travel: '#f59e0b',
-  Subscriptions: '#6366f1', 'Personal Care': '#d946ef', Home: '#84cc16', Other: '#6b7280',
+  Food: 'var(--cat-food)', Transport: 'var(--cat-transport)', Shopping: 'var(--cat-shopping)', Bills: 'var(--cat-bills)',
+  Entertainment: 'var(--cat-entertainment)', Health: 'var(--cat-health)', Education: 'var(--cat-education)', Travel: 'var(--cat-travel)',
+  Subscriptions: 'var(--cat-subscriptions)', 'Personal Care': 'var(--cat-personal)', Home: 'var(--cat-home)', Other: 'var(--cat-other)',
 };
 
 const PERIODS = [
-  { key: 'week', label: 'This Week' },
-  { key: 'month', label: 'This Month' },
-  { key: 'last_month', label: 'Last Month' },
-  { key: 'three_months', label: 'Last 3 Months' },
-  { key: 'year', label: 'This Year' },
+  { key: 'week', label: 'This week' },
+  { key: 'month', label: 'This month' },
+  { key: 'last_month', label: 'Last month' },
+  { key: 'three_months', label: 'Last 3 months' },
+  { key: 'year', label: 'This year' },
+];
+
+const VIEWS = [
+  { key: 'overview', label: 'Overview', icon: Layers3 },
+  { key: 'trends', label: 'Trends', icon: ChartNoAxesCombined },
+  { key: 'merchants', label: 'Merchants', icon: Store },
+  { key: 'comparisons', label: 'Comparisons', icon: ArrowUpRight },
 ];
 
 const formatLocalDate = (dateStr, options = { day: 'numeric', month: 'short' }) => {
@@ -30,6 +41,7 @@ const formatLocalDate = (dateStr, options = { day: 'numeric', month: 'short' }) 
 
 export default function Analytics() {
   const [period, setPeriod] = useState('month');
+  const [view, setView] = useState('overview');
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const location = useLocation();
@@ -79,156 +91,174 @@ export default function Analytics() {
   };
 
   if (loading && !data) {
-    return <div className="loading-page"><span className="loading-spinner lg" /></div>;
+    return (
+      <div className="analytics-page" role="status" aria-label="Loading analytics">
+        <div className="analytics-stats">{[0, 1, 2, 3].map(key => <div key={key} className="analytics-skeleton analytics-skeleton-stat" />)}</div>
+        <div className="analytics-grid"><div className="analytics-skeleton analytics-skeleton-chart" /><div className="analytics-skeleton analytics-skeleton-list" /></div>
+      </div>
+    );
   }
 
   const categoryData = data ? Object.entries(data.category_breakdown || {}).map(([name, value]) => ({
-    name, value: Math.round(value), fill: CATEGORY_COLORS[name] || '#6b7280',
+    name, value: Math.round(value), fill: CATEGORY_COLORS[name] || CATEGORY_COLORS.Other,
   })).sort((a, b) => b.value - a.value) : [];
 
   const dailyData = data ? Object.entries(data.daily_trend || {})
     .sort(([a], [b]) => a.localeCompare(b))
-    .map(([date, amount]) => ({
-      date: formatLocalDate(date),
-      amount: Math.round(amount),
-    })) : [];
+    .map(([date, amount]) => ({ date: formatLocalDate(date), amount: Math.round(amount) })) : [];
 
-  const formatCurrency = (v) => `₹${Number(v).toLocaleString('en-IN')}`;
+  const animationKey = `${period}-${data?.total_spent || 0}-${data?.expense_count || 0}-${JSON.stringify(data?.category_breakdown || {})}`;
+  const periodLabel = PERIODS.find(item => item.key === period)?.label || period;
+  const currentMetricCards = [
+    { label: 'Total spent', icon: IndianRupee, value: <CountUp value={data?.total_spent || 0} currency />, color: 'var(--info)', detail: periodLabel },
+    { label: 'Average per day', icon: TrendingUp, value: <CountUp value={data?.avg_daily_spending || 0} currency />, color: 'var(--success)', detail: 'Daily pace' },
+    { label: 'Largest expense', icon: ShoppingBag, value: <CountUp value={data?.highest_expense || 0} currency />, color: 'var(--warning)', detail: 'Single transaction' },
+    { label: 'Transactions', icon: Calendar, value: <CountUp value={data?.expense_count || 0} />, color: 'var(--accent-secondary)', detail: 'In this period' },
+  ];
+
+  const renderTrend = () => (
+    dailyData.length ? (
+      <div className="analytics-chart">
+        <ResponsiveContainer width="100%" height="100%">
+          <AreaChart data={dailyData} margin={{ top: 8, right: 8, bottom: 0, left: -12 }}>
+            <defs><linearGradient id="analytics-trend-fill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="var(--accent-primary)" stopOpacity={0.32} /><stop offset="95%" stopColor="var(--accent-primary)" stopOpacity={0} /></linearGradient></defs>
+            <CartesianGrid vertical={false} strokeDasharray="3 5" stroke="var(--border-subtle)" strokeOpacity={0.42} />
+            <XAxis dataKey="date" tick={{ fontSize: 11, fill: 'var(--text-muted)' }} axisLine={{ stroke: 'var(--border-subtle)' }} tickLine={false} />
+            <YAxis tick={{ fontSize: 11, fill: 'var(--text-muted)' }} tickFormatter={value => `₹${value}`} axisLine={false} tickLine={false} />
+            <Tooltip content={<ChartTooltip />} cursor={{ stroke: 'var(--border-subtle)', strokeDasharray: '3 4' }} />
+            <Area type="monotone" dataKey="amount" stroke="var(--accent-primary)" strokeWidth={2.5} fill="url(#analytics-trend-fill)" dot={false} activeDot={{ r: 4, fill: 'var(--accent-primary)', stroke: 'var(--bg-surface)', strokeWidth: 2 }} animationDuration={520} animationEasing="ease-out" />
+          </AreaChart>
+        </ResponsiveContainer>
+      </div>
+    ) : <EmptyChart title="No trend data for this period" description="Your daily spending pattern will appear here when expenses are recorded." />
+  );
+
+  const renderCategoryBars = () => (
+    categoryData.length ? (
+      <div className="analytics-chart-short">
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={categoryData} layout="vertical" margin={{ top: 4, right: 16, bottom: 0, left: 4 }}>
+            <CartesianGrid horizontal={false} stroke="var(--border-subtle)" strokeOpacity={0.4} />
+            <XAxis type="number" tick={{ fontSize: 10, fill: 'var(--text-muted)' }} tickFormatter={value => `₹${value}`} axisLine={false} tickLine={false} />
+            <YAxis type="category" dataKey="name" tick={{ fontSize: 11, fill: 'var(--text-secondary)' }} width={98} axisLine={false} tickLine={false} />
+            <Tooltip content={<ChartTooltip />} cursor={{ fill: 'var(--bg-surface-elevated)', opacity: 0.35 }} />
+            <Bar dataKey="value" radius={[0, 5, 5, 0]} animationDuration={500} animationEasing="ease-out">
+              {categoryData.map(item => <Cell key={item.name} fill={item.fill} />)}
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+    ) : <EmptyChart title="No category data" />
+  );
+
+  const renderDonut = () => (
+    categoryData.length ? (
+      <div className="dashboard-category-layout">
+        <div className="dashboard-donut">
+          <ResponsiveContainer width="100%" height="100%">
+            <PieChart>
+              <Pie data={categoryData} cx="50%" cy="50%" outerRadius="88%" innerRadius="62%" dataKey="value" paddingAngle={2} stroke="var(--bg-surface)" strokeWidth={2} animationDuration={540} animationEasing="ease-out">
+                {categoryData.map(item => <Cell key={item.name} fill={item.fill} />)}
+              </Pie>
+              <Tooltip content={<ChartTooltip />} />
+            </PieChart>
+          </ResponsiveContainer>
+        </div>
+        <div className="dashboard-legend">
+          {categoryData.map(item => <div key={item.name} className="dashboard-legend-row"><span style={{ width: 9, height: 9, borderRadius: '50%', background: item.fill }} /><span>{item.name}</span><span className="dashboard-legend-amount">₹{item.value.toLocaleString('en-IN')}</span></div>)}
+        </div>
+      </div>
+    ) : <EmptyChart title="No category mix yet" />
+  );
 
   return (
-    <div>
-      {/* Period selector */}
-      <div className="tabs" style={{ marginBottom: 24 }}>
-        {PERIODS.map(p => (
-          <button key={p.key} className={`tab ${period === p.key ? 'active' : ''}`} onClick={() => handlePeriodChange(p.key)}>
-            {p.label}
-          </button>
-        ))}
-      </div>
-
-      {/* Summary stats */}
-      <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>
-        <div className="stat-card">
-          <div className="stat-card-icon blue"><DollarSign size={20} /></div>
-          <div className="stat-card-value">{formatCurrency(data?.total_spent || 0)}</div>
-          <div className="stat-card-label">Total Spent</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-card-icon green"><TrendingUp size={20} /></div>
-          <div className="stat-card-value">{formatCurrency(data?.avg_daily_spending || 0)}</div>
-          <div className="stat-card-label">Avg Daily Spending</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-card-icon orange"><ShoppingBag size={20} /></div>
-          <div className="stat-card-value">{formatCurrency(data?.highest_expense || 0)}</div>
-          <div className="stat-card-label">Highest Expense</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-card-icon purple"><Calendar size={20} /></div>
-          <div className="stat-card-value">{data?.expense_count || 0}</div>
-          <div className="stat-card-label">Transactions</div>
-        </div>
-      </div>
-
-      {/* Spending over time */}
-      <div className="card" style={{ marginBottom: 24 }}>
-        <h3 className="card-title" style={{ marginBottom: 20 }}>Spending Over Time</h3>
-        {dailyData.length > 0 ? (
-          <div className="chart-container" style={{ height: 320 }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={dailyData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" />
-                <XAxis dataKey="date" tick={{ fontSize: 11, fill: '#9ca3af' }} />
-                <YAxis tick={{ fontSize: 11, fill: '#9ca3af' }} tickFormatter={v => `₹${v}`} />
-                <Tooltip formatter={(v) => [`₹${v}`, 'Spent']} contentStyle={{ borderRadius: 10, border: '1px solid #e5e7eb' }} />
-                <Line type="monotone" dataKey="amount" stroke="#4f46e5" strokeWidth={2} dot={{ fill: '#4f46e5', r: 3 }} />
-              </LineChart>
-            </ResponsiveContainer>
+    <div className="analytics-page">
+      <header className="analytics-topline">
+        <div className="analytics-heading"><div className="dashboard-panel-eyebrow">Your spending patterns</div><h1>Analytics</h1><p>Look at the numbers from different angles.</p></div>
+        <div className="analytics-controls">
+          <div className="analytics-periods" aria-label="Analytics period">
+            {PERIODS.map(item => <button type="button" key={item.key} className={period === item.key ? 'active' : ''} aria-pressed={period === item.key} onClick={() => handlePeriodChange(item.key)}>{item.label}</button>)}
           </div>
-        ) : (
-          <div className="empty-state"><p>No data for this period</p></div>
-        )}
-      </div>
-
-      <div className="grid-2" style={{ marginBottom: 24 }}>
-        {/* Category breakdown */}
-        <div className="card">
-          <h3 className="card-title" style={{ marginBottom: 20 }}>Spending by Category</h3>
-          {categoryData.length > 0 ? (
-            <>
-              <div className="chart-container" style={{ height: 260 }}>
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={categoryData} layout="vertical">
-                    <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" />
-                    <XAxis type="number" tick={{ fontSize: 11, fill: '#9ca3af' }} tickFormatter={v => `₹${v}`} />
-                    <YAxis type="category" dataKey="name" tick={{ fontSize: 12, fill: '#4b5563' }} width={100} />
-                    <Tooltip formatter={(v) => `₹${v}`} contentStyle={{ borderRadius: 10, border: '1px solid #e5e7eb' }} />
-                    <Bar dataKey="value" radius={[0, 4, 4, 0]}>
-                      {categoryData.map((entry, i) => <Cell key={i} fill={entry.fill} />)}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            </>
-          ) : (
-            <div className="empty-state"><p>No category data</p></div>
-          )}
+          <nav className="analytics-segments" aria-label="Analytics sections">
+            {VIEWS.map(item => { const Icon = item.icon; return <button type="button" key={item.key} className={view === item.key ? 'active' : ''} aria-pressed={view === item.key} onClick={() => setView(item.key)}><Icon size={14} style={{ verticalAlign: 'text-bottom', marginRight: 5 }} />{item.label}</button>; })}
+          </nav>
         </div>
+      </header>
 
-        {/* Top merchants */}
-        <div className="card">
-          <h3 className="card-title" style={{ marginBottom: 20 }}>Top Merchants</h3>
-          {data?.top_merchants?.length > 0 ? (
-            <div>
-              {data.top_merchants.map((m, i) => (
-                <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 0', borderBottom: i < data.top_merchants.length - 1 ? '1px solid var(--border-light)' : 'none' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <span style={{ width: 28, height: 28, borderRadius: '50%', background: 'var(--bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)' }}>{i + 1}</span>
-                    <span style={{ fontWeight: 500 }}>{m.merchant}</span>
-                  </div>
-                  <span style={{ fontWeight: 600 }}>₹{m.amount.toLocaleString('en-IN')}</span>
+      <Reveal key={`${view}-${animationKey}`}>
+      <motion.div initial="hidden" animate="show" variants={{ hidden: {}, show: { transition: { staggerChildren: 0.05 } } }}>
+        {view === 'overview' && (
+          <>
+            <div className="analytics-stats" style={{ marginBottom: 16 }}>
+              {currentMetricCards.map(item => { const Icon = item.icon; return (
+                <motion.article key={item.label} className="analytics-stat" variants={{ hidden: { opacity: 0, y: 10 }, show: { opacity: 1, y: 0 } }} transition={spring} style={{ borderTop: `2px solid ${item.color}`, background: 'var(--bg-surface)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}><div className="analytics-stat-label">{item.label}</div><Icon size={16} color={item.color} /></div>
+                  <div className="analytics-stat-value">{item.value}</div>
+                  <div className="analytics-ranking-meta">{item.detail}</div>
+                </motion.article>
+              ); })}
+            </div>
+            <div className="analytics-grid">
+              <motion.section className="analytics-panel analytics-panel-wide" variants={{ hidden: { opacity: 0, y: 10 }, show: { opacity: 1, y: 0 } }} transition={spring}>
+                <h2 className="analytics-panel-title">Spending over time</h2><p className="analytics-panel-subtitle">A daily view of your expenses</p>{renderTrend(true)}
+              </motion.section>
+              <motion.section className="analytics-panel analytics-panel-narrow" variants={{ hidden: { opacity: 0, y: 10 }, show: { opacity: 1, y: 0 } }} transition={spring}>
+                <h2 className="analytics-panel-title">Category mix</h2><p className="analytics-panel-subtitle">How this period is divided</p>{renderDonut()}
+              </motion.section>
+            </div>
+          </>
+        )}
+
+        {view === 'trends' && (
+          <div className="analytics-grid">
+            <motion.section className="analytics-panel analytics-panel-full" variants={{ hidden: { opacity: 0, y: 10 }, show: { opacity: 1, y: 0 } }} transition={spring}>
+              <h2 className="analytics-panel-title">Daily trend</h2><p className="analytics-panel-subtitle">Track the highs and lows through {periodLabel.toLowerCase()}</p>{renderTrend(true)}
+            </motion.section>
+            <motion.section className="analytics-panel analytics-panel-full" variants={{ hidden: { opacity: 0, y: 10 }, show: { opacity: 1, y: 0 } }} transition={spring}>
+              <h2 className="analytics-panel-title">Category totals</h2><p className="analytics-panel-subtitle">Ranked from highest to lowest spending</p>{renderCategoryBars()}
+            </motion.section>
+          </div>
+        )}
+
+        {view === 'merchants' && (
+          <div className="analytics-grid">
+            <motion.section className="analytics-panel analytics-panel-full" variants={{ hidden: { opacity: 0, y: 10 }, show: { opacity: 1, y: 0 } }} transition={spring}>
+              <div className="analytics-panel-title">Top merchants</div><p className="analytics-panel-subtitle">Where the most transactions in this period went</p>
+              {data?.top_merchants?.length ? (
+                <div className="analytics-ranking">
+                  {data.top_merchants.map((merchant, index) => (
+                    <motion.div key={`${merchant.merchant}-${index}`} className="analytics-ranking-row" variants={{ hidden: { opacity: 0, x: -8 }, show: { opacity: 1, x: 0 } }} transition={spring}>
+                      <span className="analytics-rank">{String(index + 1).padStart(2, '0')}</span>
+                      <span><span className="analytics-ranking-name">{merchant.merchant}</span><span className="analytics-ranking-meta">Merchant · {periodLabel.toLowerCase()}</span></span>
+                      <span className="analytics-ranking-value"><CountUp value={merchant.amount} currency /></span>
+                    </motion.div>
+                  ))}
                 </div>
-              ))}
-            </div>
-          ) : (
-            <div className="empty-state"><p>No merchant data</p></div>
-          )}
-        </div>
-      </div>
-
-      {/* Category donut */}
-      <div className="card">
-        <h3 className="card-title" style={{ marginBottom: 20 }}>Category Distribution</h3>
-        {categoryData.length > 0 ? (
-          <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap' }}>
-            <div style={{ width: 280, height: 280 }}>
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie data={categoryData} cx="50%" cy="50%" outerRadius={110} innerRadius={60} dataKey="value" paddingAngle={2}>
-                    {categoryData.map((entry, i) => <Cell key={i} fill={entry.fill} />)}
-                  </Pie>
-                  <Tooltip formatter={(v) => `₹${v}`} contentStyle={{ borderRadius: 10, border: '1px solid #e5e7eb' }} />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-            <div style={{ flex: 1, minWidth: 200, padding: '0 20px' }}>
-              {categoryData.map((item) => {
-                const pct = data.total_spent > 0 ? ((item.value / data.total_spent) * 100).toFixed(1) : 0;
-                return (
-                  <div key={item.name} style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
-                    <span style={{ width: 12, height: 12, borderRadius: 3, background: item.fill, flexShrink: 0 }} />
-                    <span style={{ flex: 1, fontSize: '0.88rem' }}>{item.name}</span>
-                    <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>{pct}%</span>
-                    <span style={{ fontWeight: 600, fontSize: '0.88rem', minWidth: 80, textAlign: 'right' }}>₹{item.value.toLocaleString('en-IN')}</span>
-                  </div>
-                );
-              })}
-            </div>
+              ) : <EmptyChart title="No merchant activity" description="Merchant rankings appear when expense entries include a merchant." />}
+            </motion.section>
           </div>
-        ) : (
-          <div className="empty-state"><p>No data to display</p></div>
         )}
-      </div>
+
+        {view === 'comparisons' && (
+          <div className="analytics-grid">
+            <motion.section className="analytics-panel analytics-panel-narrow" variants={{ hidden: { opacity: 0, y: 10 }, show: { opacity: 1, y: 0 } }} transition={spring}>
+              <h2 className="analytics-panel-title">Category distribution</h2><p className="analytics-panel-subtitle">Share of recorded expenses</p>{renderDonut()}
+            </motion.section>
+            <motion.section className="analytics-panel analytics-panel-wide" variants={{ hidden: { opacity: 0, y: 10 }, show: { opacity: 1, y: 0 } }} transition={spring}>
+              <h2 className="analytics-panel-title">Compare categories</h2><p className="analytics-panel-subtitle">Each category as a share of total spend</p>
+              {categoryData.length ? (
+                <div className="analytics-comparison-list">
+                  {categoryData.map(item => {
+                    const share = data?.total_spent > 0 ? (item.value / data.total_spent) * 100 : 0;
+                    return <div key={item.name} className="analytics-comparison-row"><span>{item.name}</span><span className="analytics-comparison-track"><motion.span className="analytics-comparison-fill" initial={{ scaleX: 0 }} animate={{ scaleX: 1 }} transition={{ duration: 0.5, ease: 'easeOut' }} style={{ display: 'block', width: `${Math.min(share, 100)}%`, background: item.fill }} /></span><strong style={{ color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>{share.toFixed(1)}%</strong></div>;
+                  })}
+                </div>
+              ) : <EmptyChart title="Nothing to compare yet" />}
+            </motion.section>
+          </div>
+        )}
+      </motion.div>
+      </Reveal>
     </div>
   );
 }

@@ -1,13 +1,23 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { IndianRupee, TrendingUp, Receipt, Tag, PlusCircle, Sparkles, ArrowRight, Lightbulb, AlertTriangle, X } from 'lucide-react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
+import { motion } from 'framer-motion';
+import { IndianRupee, TrendingUp, Receipt, Tag, PlusCircle, Sparkles, ArrowRight, Lightbulb, AlertTriangle, X, Utensils, CarFront, ShoppingBag, ReceiptText, Clapperboard, HeartPulse, GraduationCap, Plane, RefreshCw, UserRound, House, CircleEllipsis } from 'lucide-react';
+import { Area, AreaChart, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { getDashboardData, getAISummary, getInsights, dismissInsight, onExpenseChanged } from '../services/api';
+import { ChartTooltip, CountUp, DashboardSkeleton, EmptyChart, spring } from '../components/DashboardPrimitives';
+import AnimatedBackground from '../components/AnimatedBackground';
+import './Dashboard.css';
 
 const CATEGORY_COLORS = {
-  Food: '#f97316', Transport: '#3b82f6', Shopping: '#8b5cf6', Bills: '#ef4444',
-  Entertainment: '#ec4899', Health: '#10b981', Education: '#06b6d4', Travel: '#f59e0b',
-  Subscriptions: '#6366f1', 'Personal Care': '#d946ef', Home: '#84cc16', Other: '#6b7280',
+  Food: 'var(--cat-food)', Transport: 'var(--cat-transport)', Shopping: 'var(--cat-shopping)', Bills: 'var(--cat-bills)',
+  Entertainment: 'var(--cat-entertainment)', Health: 'var(--cat-health)', Education: 'var(--cat-education)', Travel: 'var(--cat-travel)',
+  Subscriptions: 'var(--cat-subscriptions)', 'Personal Care': 'var(--cat-personal)', Home: 'var(--cat-home)', Other: 'var(--cat-other)',
+};
+
+const CATEGORY_ICONS = {
+  Food: Utensils, Transport: CarFront, Shopping: ShoppingBag, Bills: ReceiptText,
+  Entertainment: Clapperboard, Health: HeartPulse, Education: GraduationCap, Travel: Plane,
+  Subscriptions: RefreshCw, 'Personal Care': UserRound, Home: House, Other: CircleEllipsis,
 };
 
 const formatLocalDate = (dateStr, options = { day: 'numeric', month: 'short' }) => {
@@ -139,7 +149,7 @@ export default function Dashboard() {
   };
 
   if (loading && !summary) {
-    return <div className="loading-page"><span className="loading-spinner lg" /><p>Loading dashboard...</p></div>;
+    return <DashboardSkeleton />;
   }
 
   if (loadError && !summary) {
@@ -153,7 +163,7 @@ export default function Dashboard() {
   }
 
   const categoryData = summary ? Object.entries(summary.category_breakdown || {}).map(([name, value]) => ({
-    name, value: Math.round(value), fill: CATEGORY_COLORS[name] || '#6b7280',
+    name, value: Math.round(value), fill: CATEGORY_COLORS[name] || CATEGORY_COLORS.Other,
   })) : [];
 
   const dailyData = summary ? Object.entries(summary.daily_trend || {})
@@ -163,7 +173,17 @@ export default function Dashboard() {
       amount: Math.round(amount),
     })) : [];
 
-  const formatCurrency = (v) => `₹${Number(v).toLocaleString('en-IN')}`;
+  const monthSummary = periodsData.month?.summary || (period === 'month' ? summary : null);
+  const lastMonthSummary = periodsData.last_month?.summary || (period === 'last_month' ? summary : null);
+  const monthTotal = Number(monthSummary?.total_spent) || 0;
+  const lastMonthTotal = Number(lastMonthSummary?.total_spent) || 0;
+  const monthChange = lastMonthTotal > 0 ? ((monthTotal - lastMonthTotal) / lastMonthTotal) * 100 : null;
+  const budgetRemaining = typeof monthSummary?.budget_remaining === 'number' ? monthSummary.budget_remaining : null;
+  const topCategoryColor = CATEGORY_COLORS[monthSummary?.top_category] || 'var(--accent-secondary)';
+  const budgetTone = budgetRemaining != null && budgetRemaining > 0 ? 'var(--success)' : 'var(--warning)';
+  const changeTone = monthChange != null && monthChange <= 0 ? 'var(--success)' : 'var(--warning)';
+  const motionKey = `${period}-${JSON.stringify(summary || {})}-${monthTotal}-${lastMonthTotal}`;
+  const recentMotionKey = recent.map(exp => `${exp.id}:${exp.amount}:${exp.expense_date}:${exp.merchant}:${exp.category}`).join('|');
 
   const handleDismissInsight = (key) => {
     setInsights(prev => prev.filter(i => i.key !== key));
@@ -171,194 +191,165 @@ export default function Dashboard() {
   };
 
   return (
-    <div>
+    <div className="dashboard-page">
       {loadError && (
-        <div className="alert alert-error" role="alert" style={{ marginBottom: 20 }}>
-          Dashboard refresh failed: {loadError}
-          <button className="btn btn-secondary btn-sm" style={{ marginLeft: 12 }} onClick={() => loadData(true)}>Retry</button>
-        </div>
-      )}
-      {/* AI Summary */}
-      {aiSummary && (
-        <div className="ai-summary">
-          <div className="ai-summary-label"><Sparkles size={14} /> AI Spending Summary</div>
-          <p className="ai-summary-text">{aiSummary}</p>
+        <div className="alert alert-error" role="alert">
+          <span>Dashboard refresh failed: {loadError}</span>
+          <button className="btn btn-secondary btn-sm" onClick={() => loadData(true)}>Retry</button>
         </div>
       )}
 
-      {/* Spending Insights */}
-      {insights.length > 0 && (
-        <div className="insights-section" style={{ marginBottom: 24 }}>
-          <div className="ai-summary-label" style={{ marginBottom: 12 }}>
-            <Lightbulb size={14} /> Spending Insights
-          </div>
-          <div className="insights-grid">
-            {insights.map(insight => (
-              <div key={insight.key} className={`insight-card ${insight.severity === 'warning' ? 'insight-card-warning' : 'insight-card-info'}`}>
-                <div className="insight-card-icon">
-                  {insight.severity === 'warning' ? <AlertTriangle size={16} /> : <Lightbulb size={16} />}
-                </div>
-                <p className="insight-card-message">{insight.message}</p>
-                <button
-                  className="insight-card-dismiss"
-                  onClick={() => handleDismissInsight(insight.key)}
-                  title="Dismiss"
-                >
-                  <X size={14} />
-                </button>
-              </div>
-            ))}
-          </div>
+      <header className="dashboard-topline">
+        <AnimatedBackground mode="band" />
+        <div className="dashboard-heading">
+          <div className="dashboard-panel-eyebrow">Expense overview</div>
+          <h1>Your money, in focus</h1>
+          <p>See the shape of your spending and what changed.</p>
         </div>
-      )}
+        <div className="tabs dashboard-periods" aria-label="Dashboard period">
+          {[
+            { key: 'week', label: 'This week' },
+            { key: 'month', label: 'This month' },
+            { key: 'last_month', label: 'Last month' },
+          ].map(item => (
+            <button key={item.key} type="button" className={`tab ${period === item.key ? 'active' : ''}`} aria-pressed={period === item.key} onClick={() => handlePeriodChange(item.key)}>{item.label}</button>
+          ))}
+        </div>
+      </header>
 
-      {/* Period tabs (Instant 0ms switching across all 3) */}
-      <div className="tabs" style={{ marginBottom: 24 }}>
+      <motion.section
+        key={motionKey}
+        className="dashboard-stats"
+        initial="hidden"
+        animate="show"
+        variants={{ hidden: {}, show: { transition: { staggerChildren: 0.05 } } }}
+        aria-label="Monthly spending summary"
+      >
         {[
-          { key: 'week', label: 'This Week' },
-          { key: 'month', label: 'This Month' },
-          { key: 'last_month', label: 'Last Month' },
-        ].map(t => (
-          <button
-            key={t.key}
-            className={`tab ${period === t.key ? 'active' : ''}`}
-            onClick={() => handlePeriodChange(t.key)}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
+          { label: 'Total spent this month', icon: IndianRupee, value: <CountUp value={monthTotal} currency />, tint: 'var(--info)', tintBg: 'var(--info-light)', primary: true, note: 'Across all categories' },
+          { label: 'Budget remaining', icon: TrendingUp, value: budgetRemaining == null ? 'Not set' : <CountUp value={budgetRemaining} currency />, tint: budgetTone, tintBg: budgetRemaining != null && budgetRemaining > 0 ? 'var(--success-light)' : 'var(--warning-light)', note: budgetRemaining == null ? 'Create your first budget' : 'Available this month', href: budgetRemaining == null ? '/budgets' : null },
+          { label: 'Top category', icon: Tag, value: monthSummary?.top_category || 'None yet', tint: topCategoryColor, tintBg: `color-mix(in srgb, ${topCategoryColor} 12%, var(--bg-surface))`, note: 'Highest spend this month' },
+          { label: 'vs Last Month', icon: monthChange != null && monthChange < 0 ? TrendingUp : TrendingUp, value: monthChange == null ? (monthTotal > 0 ? 'New' : '—') : <><span>{monthChange > 0 ? '+' : monthChange < 0 ? '−' : ''}</span><CountUp value={Math.abs(monthChange)} suffix="%" /></>, tint: changeTone, tintBg: monthChange != null && monthChange <= 0 ? 'var(--success-light)' : 'var(--warning-light)', note: monthChange == null ? 'No previous month to compare' : monthChange > 0 ? 'Spending increased' : monthChange < 0 ? 'Spending decreased' : 'No change' },
+        ].map(card => {
+          const Icon = card.icon;
+          return (
+            <motion.article
+              key={card.label}
+              className={`dashboard-stat ${card.primary ? 'dashboard-stat-primary' : ''}`}
+              variants={{ hidden: { opacity: 0, y: 12 }, show: { opacity: 1, y: 0 } }}
+              transition={spring}
+              style={{ background: 'var(--bg-surface)', borderTop: `2px solid ${card.tint}` }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                <div className="dashboard-stat-label">{card.label}</div>
+                <span className="dashboard-stat-icon" style={{ color: card.tint, background: card.tintBg }}><Icon size={17} /></span>
+              </div>
+              {card.href ? <Link to={card.href} className="dashboard-stat-value" style={{ color: 'var(--text-primary)', textDecoration: 'none' }}>{card.value}</Link> : <div className="dashboard-stat-value">{card.value}</div>}
+              <div className="dashboard-stat-note" style={{ color: card.primary ? 'var(--info)' : undefined }}>{card.note}</div>
+            </motion.article>
+          );
+        })}
+      </motion.section>
 
-      {/* Stats grid */}
-      <div className="stats-grid">
-        <div className="stat-card">
-          <div className="stat-card-icon blue"><IndianRupee size={20} /></div>
-          <div className="stat-card-value">{formatCurrency(summary?.total_spent || 0)}</div>
-          <div className="stat-card-label">Total spent</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-card-icon green"><TrendingUp size={20} /></div>
-          <div className="stat-card-value">
-            {formatCurrency(period === 'last_month' ? (summary?.avg_daily_spending || 0) : (summary?.today_spent || 0))}
+      <main className="dashboard-bento">
+        <motion.section className="dashboard-bento-panel dashboard-area-panel" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.48, ease: 'easeOut' }}>
+          <div className="dashboard-panel-header">
+            <div><div className="dashboard-panel-eyebrow">Cash flow</div><h2 className="dashboard-panel-title">Spending over time</h2></div>
+            <span className="dashboard-panel-meta">{period === 'week' ? 'Daily · this week' : period === 'last_month' ? 'Daily · last month' : 'Daily · this month'}</span>
           </div>
-          <div className="stat-card-label">{period === 'last_month' ? 'Avg daily spent' : 'Spent today'}</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-card-icon orange"><Receipt size={20} /></div>
-          <div className="stat-card-value">{summary?.expense_count || 0}</div>
-          <div className="stat-card-label">Expenses</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-card-icon purple"><Tag size={20} /></div>
-          <div className="stat-card-value" style={{ fontSize: '1.1rem' }}>{summary?.top_category || 'None'}</div>
-          <div className="stat-card-label">Top category</div>
-        </div>
-      </div>
-
-      {/* Quick action */}
-      <div style={{ marginBottom: 24 }}>
-        <Link to="/add-expense" className="btn btn-primary" style={{ textDecoration: 'none' }}>
-          <PlusCircle size={18} /> Add Expense
-        </Link>
-      </div>
-
-      {/* Charts */}
-      <div className="grid-2" style={{ marginBottom: 24 }}>
-        <div className="card">
-          <div className="card-header">
-            <h3 className="card-title">Daily Spending</h3>
-          </div>
-          {dailyData.length > 0 ? (
-            <div className="chart-container">
+          {dailyData.length ? (
+            <div className="dashboard-chart">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={dailyData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" />
-                  <XAxis dataKey="date" tick={{ fontSize: 12, fill: '#9ca3af' }} />
-                  <YAxis tick={{ fontSize: 12, fill: '#9ca3af' }} tickFormatter={v => `₹${v}`} />
-                  <Tooltip formatter={(v) => [`₹${v}`, 'Amount']} contentStyle={{ borderRadius: 10, border: '1px solid #e5e7eb' }} />
-                  <Bar dataKey="amount" fill="#4f46e5" radius={[4, 4, 0, 0]} />
-                </BarChart>
+                <AreaChart data={dailyData} margin={{ top: 10, right: 8, bottom: 0, left: -12 }}>
+                  <defs><linearGradient id="dashboard-spending-gradient" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="var(--accent-primary)" stopOpacity={0.34} /><stop offset="95%" stopColor="var(--accent-primary)" stopOpacity={0} /></linearGradient></defs>
+                  <CartesianGrid vertical={false} strokeDasharray="3 5" stroke="var(--border-subtle)" strokeOpacity={0.42} />
+                  <XAxis dataKey="date" tick={{ fontSize: 11, fill: 'var(--text-muted)' }} axisLine={{ stroke: 'var(--border-subtle)' }} tickLine={false} />
+                  <YAxis tick={{ fontSize: 11, fill: 'var(--text-muted)' }} tickFormatter={value => `₹${value}`} axisLine={false} tickLine={false} />
+                  <Tooltip content={<ChartTooltip />} cursor={{ stroke: 'var(--border-subtle)', strokeDasharray: '3 4' }} />
+                  <Area type="monotone" dataKey="amount" stroke="var(--accent-primary)" strokeWidth={2.5} fill="url(#dashboard-spending-gradient)" dot={false} activeDot={{ r: 4, fill: 'var(--accent-primary)', stroke: 'var(--bg-surface)', strokeWidth: 2 }} animationDuration={520} animationEasing="ease-out" />
+                </AreaChart>
               </ResponsiveContainer>
             </div>
-          ) : (
-            <div className="empty-state"><p>No spending data yet</p></div>
-          )}
-        </div>
+          ) : <EmptyChart title="No spending trend yet" />}
+        </motion.section>
 
-        <div className="card">
-          <div className="card-header">
-            <h3 className="card-title">By Category</h3>
+        <motion.section className="dashboard-bento-panel dashboard-category-panel" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.48, ease: 'easeOut', delay: 0.04 }}>
+          <div className="dashboard-panel-header">
+            <div><div className="dashboard-panel-eyebrow">Where it goes</div><h2 className="dashboard-panel-title">Category mix</h2></div>
+            {summary?.expense_count > 0 && <span className="dashboard-panel-meta">{summary.expense_count} expenses</span>}
           </div>
-          {categoryData.length > 0 ? (
-            <div className="chart-container" style={{ display: 'flex', alignItems: 'center' }}>
-              <ResponsiveContainer width="60%" height="100%">
-                <PieChart>
-                  <Pie data={categoryData} cx="50%" cy="50%" outerRadius={90} innerRadius={50} dataKey="value" paddingAngle={2}>
-                    {categoryData.map((entry, i) => <Cell key={i} fill={entry.fill} />)}
-                  </Pie>
-                  <Tooltip formatter={(v) => `₹${v}`} contentStyle={{ borderRadius: 10, border: '1px solid #e5e7eb' }} />
-                </PieChart>
-              </ResponsiveContainer>
-              <div style={{ flex: 1, fontSize: '0.82rem' }}>
-                {categoryData.map((item) => (
-                  <div key={item.name} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                    <span style={{ width: 10, height: 10, borderRadius: '50%', background: item.fill, flexShrink: 0 }} />
-                    <span style={{ flex: 1, color: 'var(--text-secondary)' }}>{item.name}</span>
-                    <span style={{ fontWeight: 600 }}>₹{item.value}</span>
+          {categoryData.length ? (
+            <div className="dashboard-category-layout">
+              <div className="dashboard-donut">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie data={categoryData} cx="50%" cy="50%" outerRadius="88%" innerRadius="62%" dataKey="value" paddingAngle={2} stroke="var(--bg-surface)" strokeWidth={2} animationDuration={540} animationEasing="ease-out">
+                      {categoryData.map(item => <Cell key={item.name} fill={item.fill} />)}
+                    </Pie>
+                    <Tooltip content={<ChartTooltip />} />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+              <div className="dashboard-legend">
+                {categoryData.map(item => (
+                  <div key={item.name} className="dashboard-legend-row">
+                    <span style={{ width: 9, height: 9, borderRadius: '50%', background: item.fill }} />
+                    <span>{item.name}</span>
+                    <span className="dashboard-legend-amount">₹{item.value.toLocaleString('en-IN')}</span>
                   </div>
                 ))}
               </div>
             </div>
-          ) : (
-            <div className="empty-state"><p>No category data yet</p></div>
-          )}
-        </div>
-      </div>
+          ) : <EmptyChart title="No categories yet" />}
+        </motion.section>
 
-      {/* Expenses for selected period */}
-      <div className="card">
-        <div className="card-header">
-          <h3 className="card-title">
-            {period === 'week' ? 'This Week’s Expenses' : period === 'last_month' ? 'Last Month’s Expenses' : 'This Month’s Expenses'}
-          </h3>
-          <Link to="/expenses" className="btn btn-secondary btn-sm" style={{ textDecoration: 'none' }}>
-            View All <ArrowRight size={14} />
-          </Link>
-        </div>
+        <section className="dashboard-bento-panel dashboard-recent-panel">
+          <div className="dashboard-panel-header">
+            <div><div className="dashboard-panel-eyebrow">Latest transactions</div><h2 className="dashboard-panel-title">Recent activity</h2></div>
+            <Link to="/expenses" className="btn btn-secondary btn-sm" style={{ textDecoration: 'none' }}>All expenses <ArrowRight size={14} /></Link>
+          </div>
+          {recent.length ? (
+            <motion.div key={recentMotionKey} className="dashboard-activity-list" initial="hidden" animate="show" variants={{ hidden: {}, show: { transition: { staggerChildren: 0.05 } } }}>
+              {recent.map(exp => {
+                const categoryColor = CATEGORY_COLORS[exp.category] || CATEGORY_COLORS.Other;
+                const CategoryIcon = CATEGORY_ICONS[exp.category] || CircleEllipsis;
+                return (
+                  <motion.article key={exp.id} className="dashboard-activity-row" variants={{ hidden: { opacity: 0, y: 8 }, show: { opacity: 1, y: 0 } }} transition={spring}>
+                    <span className="dashboard-activity-icon" style={{ color: categoryColor, background: `color-mix(in srgb, ${categoryColor} 13%, var(--bg-surface))` }}><CategoryIcon size={17} /></span>
+                    <span className="dashboard-activity-main"><span className="dashboard-activity-merchant">{exp.merchant || 'Expense'}</span><span className="dashboard-activity-date">{formatLocalDate(exp.expense_date)}</span></span>
+                    <span className="dashboard-category-badge" style={{ color: categoryColor, background: `color-mix(in srgb, ${categoryColor} 13%, var(--bg-surface))` }}>{exp.category || 'Other'}</span>
+                    <span className="dashboard-activity-amount">₹{Number(exp.amount).toLocaleString('en-IN')}</span>
+                  </motion.article>
+                );
+              })}
+            </motion.div>
+          ) : <EmptyChart title="Nothing recorded for this period" description="Add an expense to start building your activity history." />}
+        </section>
 
-        {recent.length > 0 ? (
-          <div className="table-wrapper">
-            <table>
-              <thead>
-                <tr>
-                  <th>Date</th>
-                  <th>Merchant</th>
-                  <th>Category</th>
-                  <th>Amount</th>
-                  <th>Source</th>
-                </tr>
-              </thead>
-              <tbody>
-                {recent.map(exp => (
-                  <tr key={exp.id}>
-                    <td>{formatLocalDate(exp.expense_date)}</td>
-                    <td>{exp.merchant || '—'}</td>
-                    <td><span className={`badge badge-${exp.category?.toLowerCase().replace(' ', '')}`}>{exp.category}</span></td>
-                    <td style={{ fontWeight: 600 }}>₹{Number(exp.amount).toLocaleString('en-IN')}</td>
-                    <td><span className={`badge ${exp.source === 'manual' ? 'badge-manual' : 'badge-source'}`}>{exp.source === 'natural_language' ? 'AI' : exp.source === 'receipt' ? 'Receipt' : 'Manual'}</span></td>
-                  </tr>
+        <aside className="dashboard-bento-panel dashboard-support-panel">
+          <div className="dashboard-ai-panel">
+            <div className="dashboard-ai-label"><Sparkles size={15} /> AI spending summary</div>
+            <p className="dashboard-ai-copy">{aiSummary || 'Your spending patterns will appear here as you add expenses. Start with a receipt scan or a quick entry.'}</p>
+          </div>
+
+          {insights.length > 0 && (
+            <section>
+              <div className="dashboard-panel-header" style={{ marginBottom: 10 }}><div><div className="dashboard-panel-eyebrow">Signals</div><h2 className="dashboard-panel-title" style={{ fontSize: 'var(--text-base)' }}>Spending insights</h2></div></div>
+              <motion.div key={insights.map(item => item.key).join('|')} className="dashboard-insights" initial="hidden" animate="show" variants={{ hidden: {}, show: { transition: { staggerChildren: 0.05 } } }}>
+                {insights.map(insight => (
+                  <motion.div key={insight.key} className="dashboard-insight" variants={{ hidden: { opacity: 0, y: 7 }, show: { opacity: 1, y: 0 } }} transition={spring}>
+                    {insight.severity === 'warning' ? <AlertTriangle size={15} color="var(--warning)" /> : <Lightbulb size={15} color="var(--info)" />}
+                    <span style={{ flex: 1 }}>{insight.message}</span>
+                    <button className="insight-card-dismiss" onClick={() => handleDismissInsight(insight.key)} title="Dismiss" aria-label="Dismiss insight"><X size={14} /></button>
+                  </motion.div>
                 ))}
-              </tbody>
-            </table>
-          </div>
-        ) : (
-          <div className="empty-state">
-            <Receipt size={40} />
-            <h3>No expenses {period === 'last_month' ? 'recorded for last month' : period === 'week' ? 'this week' : 'this month'}</h3>
-            <p>Add an expense or switch period tabs above.</p>
-          </div>
-        )}
-      </div>
+              </motion.div>
+            </section>
+          )}
+
+          <Link to="/add-expense" className="btn btn-primary" style={{ justifyContent: 'space-between', padding: '13px 16px', textDecoration: 'none' }}><span style={{ display: 'inline-flex', alignItems: 'center', gap: 9 }}><PlusCircle size={18} /> Add an expense</span><ArrowRight size={16} /></Link>
+        </aside>
+      </main>
     </div>
   );
 }
