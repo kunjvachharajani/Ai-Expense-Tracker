@@ -5,9 +5,17 @@ import logging
 from typing import Optional, Tuple
 
 import httpx
-from PIL import Image, ImageOps
 
 from app.config import settings
+
+# PIL is optional — not available in the Vercel bundle (too large).
+# All PIL usage must be inside try/except blocks.
+try:
+    from PIL import Image, ImageOps
+    _PIL_AVAILABLE = True
+except ImportError:
+    _PIL_AVAILABLE = False
+
 from app.categories import CATEGORIES, CATEGORY_LIST, PAYMENT_METHODS
 from app.schemas import AIExpenseExtraction
 from app.dates import get_current_date_context, parse_date_safe, validate_date_not_future
@@ -99,10 +107,14 @@ RULES:
 
 
 def _prepare_image_for_groq(image_bytes: bytes, filename: str, content_type: Optional[str] = None) -> Tuple[str, str]:
-    """Convert and normalize image or PDF for Groq Vision."""
+    """Convert and normalize image or PDF for Groq Vision.
+    PIL/pymupdf are optional (not bundled on Vercel). Falls back to passing
+    raw bytes directly to the vision API, which handles most formats natively.
+    """
     ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else "jpg"
 
     if ext == "pdf" or (content_type and "pdf" in content_type.lower()):
+        # Try pymupdf to rasterise first page; if unavailable, send raw PDF bytes.
         try:
             import pymupdf
             doc = pymupdf.open(stream=image_bytes, filetype="pdf")
@@ -111,35 +123,45 @@ def _prepare_image_for_groq(image_bytes: bytes, filename: str, content_type: Opt
             pix = doc[0].get_pixmap(dpi=150)
             img_bytes = pix.tobytes("png")
             mime = "image/png"
+        except ImportError:
+            logger.info("pymupdf not available; sending PDF bytes directly to vision API.")
+            img_bytes = image_bytes
+            mime = "application/pdf"
         except Exception as e:
-            logger.error(f"Failed to process PDF page: {e}")
-            raise ValueError("Could not read uploaded PDF file.")
+            logger.warning(f"PDF rasterisation failed ({e}); sending raw bytes.")
+            img_bytes = image_bytes
+            mime = "application/pdf"
     else:
-        try:
-            original = Image.open(io.BytesIO(image_bytes))
-            orientation = original.getexif().get(274, 1)
-            if (
-                ext in ("jpg", "jpeg")
-                and original.mode == "RGB"
-                and orientation == 1
-                and max(original.size) <= 2048
-            ):
-                # The browser already made one high-quality, orientation-corrected JPEG.
+        # Try PIL for normalisation; fall back to raw bytes when unavailable.
+        if _PIL_AVAILABLE:
+            try:
+                original = Image.open(io.BytesIO(image_bytes))
+                orientation = original.getexif().get(274, 1)
+                if (
+                    ext in ("jpg", "jpeg")
+                    and original.mode == "RGB"
+                    and orientation == 1
+                    and max(original.size) <= 2048
+                ):
+                    img_bytes = image_bytes
+                else:
+                    im = ImageOps.exif_transpose(original)
+                    if im.mode != "RGB":
+                        im = im.convert("RGB")
+                    max_size = 2048
+                    if max(im.size) > max_size:
+                        im.thumbnail((max_size, max_size), Image.Resampling.LANCZOS)
+                    buf = io.BytesIO()
+                    im.save(buf, format="JPEG", quality=92, optimize=True)
+                    img_bytes = buf.getvalue()
+                mime = "image/jpeg"
+            except Exception as e:
+                logger.warning(f"Image normalisation bypassed: {e}")
                 img_bytes = image_bytes
-            else:
-                im = ImageOps.exif_transpose(original)
-                if im.mode != "RGB":
-                    im = im.convert("RGB")
-                # Keep receipt text legible while staying within vision API limits.
-                max_size = 2048
-                if max(im.size) > max_size:
-                    im.thumbnail((max_size, max_size), Image.Resampling.LANCZOS)
-                buf = io.BytesIO()
-                im.save(buf, format="JPEG", quality=92, optimize=True)
-                img_bytes = buf.getvalue()
-            mime = "image/jpeg"
-        except Exception as e:
-            logger.warning(f"Image normalization bypassed: {e}")
+                mime = content_type or ("image/jpeg" if ext in ("jpg", "jpeg") else f"image/{ext}")
+        else:
+            # No PIL — send raw bytes; Groq Vision handles JPEG/PNG natively.
+            logger.info("PIL not available; sending raw image bytes to vision API.")
             img_bytes = image_bytes
             mime = content_type or ("image/jpeg" if ext in ("jpg", "jpeg") else f"image/{ext}")
 
