@@ -16,7 +16,7 @@ A personal expense tracker with a FastAPI API, React frontend, receipt scanning,
 
 ![Receipt scanning](docs/screenshots/scan-receipt.png)
 
-!![Analytics](docs/screenshots/analytics.png)
+![Analytics](docs/screenshots/analytics.png)
 
 ## Features
 
