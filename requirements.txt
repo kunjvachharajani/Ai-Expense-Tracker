@@ -1,3 +1,7 @@
+# Production dependencies (used by Vercel for the serverless function bundle).
+# WARNING: Do NOT add pymupdf or pillow here — pymupdf 2.x pulls in onnxruntime,
+# numpy, networkx, etc. (~240 MB extra) which blows past Vercel's 225 MB limit.
+# Those packages are only needed locally; see requirements-dev.txt for local dev.
 fastapi>=0.115.0
 uvicorn[standard]>=0.30.6
 python-dotenv>=1.0.1
@@ -7,7 +11,3 @@ python-multipart>=0.0.12
 supabase>=2.9.1
 python-jose[cryptography]>=3.3.0
 python-dateutil>=2.9.0
-pillow>=10.0.0
-pymupdf>=1.24.0
-# pytest is a dev dependency; install separately with: pip install pytest
-# pytest>=8.0.0
