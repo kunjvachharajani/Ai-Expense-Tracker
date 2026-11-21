@@ -4,7 +4,7 @@
  */
 import { useState, useRef } from 'react';
 import { motion, useReducedMotion } from 'framer-motion';
-import { CheckCircle, X, Sparkles } from 'lucide-react';
+import { CheckCircle, X, Sparkles, FileText } from 'lucide-react';
 import MagneticButton from './MagneticButton';
 import './ConfirmExpenseModal.css';
 
@@ -20,7 +20,7 @@ const PAYMENT_METHODS = [
 
 const spring = { type: 'spring', stiffness: 300, damping: 20 };
 
-export default function ConfirmExpenseModal({ data, onConfirm, onCancel, loading, source }) {
+export default function ConfirmExpenseModal({ data, onConfirm, onCancel, loading, source, receiptPreview }) {
   const prefersReduced = useReducedMotion();
   const [form, setForm] = useState({
     amount: data.amount || '',
@@ -72,7 +72,7 @@ export default function ConfirmExpenseModal({ data, onConfirm, onCancel, loading
     <motion.div className="modal-overlay confirm-expense-overlay" onClick={onCancel}
       initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
       transition={prefersReduced ? { duration: 0 } : { duration: 0.2 }}>
-      <motion.div className="modal confirm-expense-modal" onClick={e => e.stopPropagation()}
+      <motion.div className={`modal confirm-expense-modal${receiptPreview ? ' has-receipt-preview' : ''}`} onClick={e => e.stopPropagation()}
         initial={prefersReduced ? { opacity: 0 } : { opacity: 0, scale: 0.95, y: 12 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={prefersReduced ? { opacity: 0 } : { opacity: 0, scale: 0.97, y: 6 }}
@@ -80,7 +80,7 @@ export default function ConfirmExpenseModal({ data, onConfirm, onCancel, loading
         <div className="confirm-expense-heading">
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <Sparkles size={18} color="var(--accent-primary)" />
-            <h3 className="modal-title" style={{ margin: 0 }}>Review & Confirm</h3>
+            <h3 className="modal-title" style={{ margin: 0 }}>{receiptPreview ? 'Review receipt details' : 'Review & Confirm'}</h3>
           </div>
           <button className="btn btn-icon" onClick={onCancel} aria-label="Close"><X size={18} /></button>
         </div>
@@ -89,6 +89,16 @@ export default function ConfirmExpenseModal({ data, onConfirm, onCancel, loading
           {data?.warning || 'AI extracted this data. Please review before saving.'}
         </div>
 
+        <div className={`confirm-expense-content${receiptPreview ? ' with-receipt-preview' : ''}`}>
+        {receiptPreview && <aside className="confirm-receipt-preview">
+          <div className="confirm-receipt-preview-heading"><span className="dashboard-panel-eyebrow">Receipt preview</span><span className="confirm-receipt-file-type">{receiptPreview.isPdf ? 'PDF' : 'IMAGE'}</span></div>
+          <div className="confirm-receipt-preview-frame">
+            {receiptPreview.isPdf ? <div className="confirm-receipt-pdf"><FileText size={34} /><span>PDF receipt</span></div> : <img src={receiptPreview.url} alt="Uploaded receipt preview" />}
+          </div>
+          <div className="confirm-receipt-file-meta"><span title={receiptPreview.name}>{receiptPreview.name}</span>{Number.isFinite(receiptPreview.size) && <small>{(receiptPreview.size / 1024 / 1024).toFixed(2)} MB</small>}</div>
+        </aside>}
+
+        <div className="confirm-expense-fields">
         <div className={`extraction-result confirm-expense-amount${editedFields['amount'] ? ' confirm-field-flash' : ''}`}>
           <div className="result-row">
             <span className="result-label">Amount</span>
@@ -145,8 +155,10 @@ export default function ConfirmExpenseModal({ data, onConfirm, onCancel, loading
         <div className="modal-actions">
           <button className="btn btn-secondary" onClick={onCancel} disabled={loading}>Cancel</button>
           <MagneticButton className="btn btn-success" onClick={handleSubmit} disabled={loading || !form.amount || parseFloat(form.amount) <= 0}>
-            {loading ? 'Saving…' : <><CheckCircle size={18} /> Confirm & Save</>}
+            {loading ? 'Saving…' : <><CheckCircle size={18} /> {receiptPreview ? 'Save Expense' : 'Confirm & Save'}</>}
           </MagneticButton>
+        </div>
+        </div>
         </div>
       </motion.div>
     </motion.div>

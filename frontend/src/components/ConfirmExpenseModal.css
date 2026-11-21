@@ -15,6 +15,77 @@
   box-shadow: 0 22px 70px color-mix(in srgb, var(--accent-primary) 14%, transparent);
 }
 
+.confirm-expense-modal.has-receipt-preview {
+  width: min(calc(100vw - 32px), 1020px);
+}
+
+.confirm-expense-content.with-receipt-preview {
+  display: grid;
+  grid-template-columns: minmax(0, 0.88fr) minmax(0, 1.12fr);
+  align-items: start;
+  gap: 22px;
+}
+
+.confirm-receipt-preview {
+  position: sticky;
+  top: 0;
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--bg-base);
+}
+
+.confirm-receipt-preview-heading,
+.confirm-receipt-file-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.confirm-receipt-file-type {
+  padding: 4px 7px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+
+.confirm-receipt-preview-frame {
+  display: grid;
+  place-items: center;
+  min-height: 250px;
+  max-height: 56vh;
+  margin-top: 12px;
+  overflow: hidden;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface);
+}
+
+.confirm-receipt-preview-frame img {
+  display: block;
+  width: 100%;
+  max-height: 56vh;
+  object-fit: contain;
+}
+
+.confirm-receipt-pdf {
+  display: grid;
+  justify-items: center;
+  gap: 9px;
+  color: var(--accent-primary);
+  font-size: var(--text-sm);
+}
+
+.confirm-receipt-file-meta { margin-top: 10px; color: var(--text-secondary); font-size: var(--text-xs); }
+.confirm-receipt-file-meta > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.confirm-receipt-file-meta small { flex: 0 0 auto; color: var(--text-muted); font-size: var(--text-xs); font-variant-numeric: tabular-nums; }
+.confirm-expense-fields { min-width: 0; }
+
 .confirm-expense-heading {
   display: flex;
   align-items: center;
@@ -65,6 +136,12 @@
   gap: 8px;
 }
 
+.confirm-expense-modal.has-receipt-preview .modal-actions {
+  position: static;
+  margin: 22px 0 0;
+  padding: 16px 0 0;
+}
+
 @media (max-width: 560px) {
   .confirm-expense-modal {
     width: calc(100% - 20px);
@@ -79,6 +156,22 @@
     margin-bottom: -20px;
     padding-right: 16px;
     padding-left: 16px;
+  }
+}
+
+@media (max-width: 760px) {
+  .confirm-expense-content.with-receipt-preview { grid-template-columns: 1fr; gap: 16px; }
+  .confirm-receipt-preview { position: static; }
+  .confirm-receipt-preview-frame { min-height: 170px; max-height: 250px; }
+  .confirm-receipt-preview-frame img { max-height: 250px; }
+}
+
+@media (max-width: 560px) {
+  .confirm-expense-modal.has-receipt-preview .modal-actions {
+    position: sticky;
+    bottom: -20px;
+    margin: 20px -16px -20px;
+    padding: 16px;
   }
 }
 
