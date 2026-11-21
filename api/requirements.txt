@@ -1,0 +1,15 @@
+# Vercel serverless function dependencies.
+# Keep this lean — Vercel zips the installed packages into the function bundle.
+# pymupdf and pillow are intentionally excluded: they add ~62 MB and exceed
+# Vercel's 50 MB function limit. Both are only used as optional optimisation
+# helpers in ocr_service.py; the code gracefully falls back to OCR.space when
+# they are unavailable.
+fastapi>=0.115.0
+uvicorn>=0.30.6
+python-dotenv>=1.0.1
+httpx>=0.27.2
+pydantic>=2.9.2
+python-multipart>=0.0.12
+supabase>=2.9.1
+python-jose[cryptography]>=3.3.0
+python-dateutil>=2.9.0

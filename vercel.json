@@ -4,7 +4,7 @@
   "functions": {
     "api/**/*.py": {
       "includeFiles": "backend/app/**",
-      "excludeFiles": "{backend/.venv/**,backend/.pytest_cache/**,backend/tests/**,backend/conftest.py,backend/.env,backend/.env.example,backend/database_setup.sql,backend/pyproject.toml}",
+      "excludeFiles": "{backend/.venv/**,backend/.pytest_cache/**,backend/tests/**,backend/conftest.py,backend/.env,backend/.env.example,backend/database_setup.sql,backend/pyproject.toml,backend/app/**/__pycache__/**,backend/app/**/*.pyc,backend/app/**/*.pyo}",
       "maxDuration": 30
     }
   },
