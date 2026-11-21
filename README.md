@@ -1,350 +1,179 @@
 # AI Receipt & Expense Tracker
 
+[![CI](https://github.com/kunjvachharajani/Ai-Expense-Tracker/actions/workflows/ci.yml/badge.svg)](https://github.com/kunjvachharajani/Ai-Expense-Tracker/actions/workflows/ci.yml)
 [![Vercel Deployment](https://img.shields.io/badge/Vercel-Deployed-black?style=flat&logo=vercel)](https://ai-expense-tracker-peach-kappa.vercel.app)
 [![GitHub](https://img.shields.io/badge/GitHub-Repository-blue?style=flat&logo=github)](https://github.com/kunjvachharajani/Ai-Expense-Tracker)
 
 **Live Demo (Production):** [https://ai-expense-tracker-peach-kappa.vercel.app](https://ai-expense-tracker-peach-kappa.vercel.app)
 
-An AI-powered expense tracking web application that lets you track daily expenses through **natural language** and **receipt scanning**. Built with FastAPI, React, Groq AI, OCR.space, and Supabase.
+A personal expense tracker with a FastAPI API, React frontend, receipt scanning, analytics, budgets, and spending insights.
 
----
+## Screenshots
+
+<!-- Add the real screenshots at these paths. -->
+
+![Dashboard](docs/screenshots/dashboard.png)
+
+![Receipt scanning](docs/screenshots/scan-receipt.png)
+
+![Spending insights](docs/screenshots/insights.png)
 
 ## Features
 
-- **Natural Language Expense Entry** — Type "Spent 150 on chai and samosa" and AI extracts structured data
-- **Receipt Scanning** — Upload a receipt photo → OCR → AI extraction → structured expense data
-- **User Confirmation** — AI never saves directly; users always review and confirm
-- **Dashboard** — Real-time stats, charts, and AI-generated spending summaries
-- **Expense Management** — Full CRUD with search, filters, sorting, pagination
-- **Analytics** — Spending by category, daily trends, top merchants, period comparisons
-- **Budgets** — Set monthly budgets per category with progress tracking and warnings
-- **Authentication** — Supabase Auth with email/password, full user isolation
-- **Responsive Design** — Works on desktop, tablet, and mobile
-
----
+- Add expenses manually or parse a natural-language description into a draft.
+- Scan receipt images and PDFs, review the extracted draft, then confirm before saving.
+- View dashboard summaries, recent expenses, category and date analytics, and budgets.
+- See spending insights for category spikes, new merchants, duplicate charges, recurring-charge drift, and budget pace. Deterministic Python detectors calculate the facts and figures; the Groq-hosted LLM only rewrites those facts as plain sentences, so it does not generate the numbers.
+- Sign in and create accounts through Supabase Auth.
 
 ## Architecture
 
-```mermaid
-graph TD
-    A[React Frontend] -->|HTTP + JWT| B[FastAPI Backend]
-    B -->|OCR| C[OCR.space API]
-    B -->|AI Extraction| D[Groq API]
-    B -->|Database| E[Supabase PostgreSQL]
-    A -->|Auth| E
-    
-    subgraph "Receipt Flow"
-        F[Upload Image] --> G[OCR.space] --> H[Groq LLM] --> I[Pydantic Validation] --> J[User Confirmation] --> K[Save to DB]
-    end
-    
-    subgraph "Natural Language Flow"
-        L[Text Input] --> M[Groq LLM] --> N[Pydantic Validation] --> O[User Confirmation] --> P[Save to DB]
-    end
-```
-
----
+The React frontend calls the FastAPI backend. The backend reads and writes expense data in Supabase PostgreSQL, verifies Supabase JWTs on protected routes, and calls Groq and OCR.space when parsing expenses or receipts. `api/index.py` exposes the FastAPI app as a Vercel serverless function; `vercel.json` also configures the frontend build and routes.
 
 ## Tech Stack
 
 | Layer | Technology |
-|-------|-----------|
-| Frontend | React 18 + Vite |
-| Backend | Python FastAPI |
-| AI/LLM | Groq (Llama 3.1 70B) |
-| OCR | OCR.space API |
-| Database | Supabase PostgreSQL |
-| Auth | Supabase Auth |
-| Charts | Recharts |
-| HTTP Client | httpx (backend), fetch (frontend) |
-| Validation | Pydantic v2 |
+|---|---|
+| Frontend | React 19, Vite, React Router, Recharts |
+| Backend | Python, FastAPI, Pydantic |
+| Language and vision models | Groq-hosted LLM; configured with `GROQ_MODEL` and `GROQ_VISION_MODEL` |
+| Receipt OCR | Groq Vision and OCR.space |
+| Database and authentication | Supabase PostgreSQL and Supabase Auth |
+| PDF text extraction | PyMuPDF |
 
----
+## AI Pipeline
+
+- **Images:** try Groq Vision first (`GROQ_VISION_MODEL`). If that does not return an extraction, try OCR.space and parse its text with the Groq LLM. If automatic extraction fails, the API returns a draft for manual entry.
+- **PDFs:** try direct embedded-text extraction with PyMuPDF first. If the PDF has no usable embedded text, the OCR service tries OCR.space; the extracted text is parsed by the Groq LLM. If PDF text extraction/parsing fails, the route can fall back to Groq Vision.
+- **Natural language:** the Groq LLM parses the text into a validated expense draft.
+- **Spending insights:** Python detectors calculate each fact; the Groq LLM turns those facts into short messages. Extracted drafts are shown for review and require user confirmation before saving.
 
 ## Folder Structure
 
-```
-ai-receipt-expense-tracker/
+```text
+.
+├── api/
+│   └── index.py                 # Vercel serverless entry point
 ├── backend/
 │   ├── app/
-│   │   ├── api/
-│   │   │   ├── auth.py          # JWT verification dependency
-│   │   │   ├── expenses.py      # Expense CRUD + AI parsing
-│   │   │   ├── receipts.py      # Receipt scanning endpoint
-│   │   │   ├── analytics.py     # Analytics & summaries
-│   │   │   └── budgets.py       # Budget CRUD
-│   │   ├── models/
-│   │   │   └── categories.py    # Category/payment constants
-│   │   ├── schemas/
-│   │   │   ├── expense.py       # Pydantic schemas
-│   │   │   └── budget.py        # Budget schemas
-│   │   ├── services/
-│   │   │   ├── groq_service.py  # Groq AI integration
-│   │   │   ├── ocr_service.py   # OCR.space integration
-│   │   │   └── analytics_service.py
-│   │   ├── database/
-│   │   │   └── supabase.py      # Supabase client
-│   │   ├── utils/
-│   │   │   └── dates.py         # Date parsing helpers
-│   │   ├── config.py            # Environment config
-│   │   └── main.py              # FastAPI app entry
-│   ├── database_setup.sql       # Supabase SQL migration
-│   └── .env.example
-│
+│   │   ├── api/                 # Auth, expenses, receipts, analytics, budgets
+│   │   ├── services/            # OCR, Groq, analytics, spending insights
+│   │   ├── categories.py
+│   │   ├── config.py
+│   │   ├── db.py
+│   │   ├── dates.py
+│   │   ├── main.py
+│   │   └── schemas.py
+│   ├── tests/
+│   ├── conftest.py
+│   └── database_setup.sql
 ├── frontend/
-│   ├── src/
-│   │   ├── components/
-│   │   │   ├── Sidebar.jsx
-│   │   │   ├── Header.jsx
-│   │   │   └── ConfirmExpenseModal.jsx
-│   │   ├── pages/
-│   │   │   ├── Dashboard.jsx
-│   │   │   ├── AddExpense.jsx
-│   │   │   ├── ScanReceipt.jsx
-│   │   │   ├── Expenses.jsx
-│   │   │   ├── Analytics.jsx
-│   │   │   ├── Budgets.jsx
-│   │   │   ├── Settings.jsx
-│   │   │   ├── Login.jsx
-│   │   │   └── Signup.jsx
-│   │   ├── services/
-│   │   │   ├── api.js           # Backend API calls
-│   │   │   └── supabaseClient.js
-│   │   ├── hooks/
-│   │   │   └── useAuth.jsx      # Auth context
-│   │   ├── App.jsx
-│   │   ├── main.jsx
-│   │   └── index.css            # Design system
-│   ├── index.html
-│   ├── .env.example
-│   └── package.json
-│
-├── requirements.txt
+│   └── src/
+│       ├── components/
+│       ├── hooks/
+│       ├── pages/
+│       └── services/
+├── .github/workflows/ci.yml
+├── requirements.txt             # Python dependencies for the repo
+├── vercel.json
 └── README.md
 ```
-
----
 
 ## Setup Instructions
 
 ### Prerequisites
 
-- Python 3.10+
-- Node.js 18+
-- Supabase account (free tier works)
-- Groq API key (free at console.groq.com)
-- OCR.space API key (free at ocr.space)
+- Python 3.10 or newer
+- Node.js and npm
+- Supabase project
+- Groq API key for LLM and Vision features
+- OCR.space API key for OCR fallback
 
-### 1. Supabase Setup
+### 1. Configure Supabase
 
-1. Create a new project at [supabase.com](https://supabase.com)
-2. Go to **SQL Editor** and run the contents of `backend/database_setup.sql`
-3. Go to **Settings → API** and copy:
-   - Project URL
-   - `anon` public key
-   - `service_role` secret key
-4. Under **Authentication → Settings**, ensure email/password sign-in is enabled
+Create a Supabase project and run `backend/database_setup.sql` in the Supabase SQL Editor. Set the project URL, anon key, and service-role key in your local backend environment. Enable email/password authentication if you want to use the included sign-up and sign-in pages.
 
-### 2. API Keys
+### 2. Install and run the backend
 
-| Service | Get Key At |
-|---------|-----------|
-| Groq | [console.groq.com](https://console.groq.com) |
-| OCR.space | [ocr.space/ocrapi](https://ocr.space/ocrapi) |
-| Supabase | Your project's Settings → API |
+From the repository root:
 
-### 3. Backend Setup
+```bash
+python -m venv .venv
+# Windows PowerShell:
+.\.venv\Scripts\Activate.ps1
+# macOS/Linux:
+# source .venv/bin/activate
+python -m pip install -r requirements.txt
+```
+
+Create `backend/.env` using `backend/.env.example` as a reference. Configure `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `GROQ_API_KEY`, `OCR_SPACE_API_KEY`, and optionally `GROQ_MODEL`, `GROQ_VISION_MODEL`, and `FRONTEND_URL`.
 
 ```bash
 cd backend
-
-# Create virtual environment
-python -m venv venv
-venv\Scripts\activate        # Windows
-# source venv/bin/activate   # Mac/Linux
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Configure environment
-copy .env.example .env       # Windows
-# cp .env.example .env       # Mac/Linux
-
-# Edit .env and fill in your keys:
-# GROQ_API_KEY=gsk_...
-# OCR_SPACE_API_KEY=K...
-# SUPABASE_URL=https://xxx.supabase.co
-# SUPABASE_ANON_KEY=eyJ...
-# SUPABASE_SERVICE_ROLE_KEY=eyJ...
-
-# Run the server
-uvicorn app.main:app --reload --port 8001
+python -m uvicorn app.main:app --reload --port 8001
 ```
 
-### 4. Frontend Setup
+### 3. Install and run the frontend
+
+In another terminal, from the repository root:
 
 ```bash
 cd frontend
-
-# Install dependencies
 npm install
+```
 
-# Configure environment
-copy .env.example .env       # Windows
-# cp .env.example .env       # Mac/Linux
+Set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` in `frontend/.env`. Set `VITE_API_URL=http://localhost:8001` for local backend use, then run:
 
-# Edit .env:
-# VITE_API_URL=http://localhost:8001
-# VITE_SUPABASE_URL=https://xxx.supabase.co
-# VITE_SUPABASE_ANON_KEY=eyJ...
-
-# Run dev server
+```bash
 npm run dev
 ```
 
-Open http://localhost:5173 in your browser.
-
----
-
 ## API Endpoints
 
-| Method | Endpoint | Description |
-|--------|---------|-------------|
-| GET | `/api/health` | Health check |
-| GET | `/api/categories` | List all categories |
-| POST | `/api/expenses/parse-text` | Parse natural language → structured expense |
-| POST | `/api/expenses` | Create expense |
-| GET | `/api/expenses` | List expenses (with filters/pagination) |
-| GET | `/api/expenses/{id}` | Get single expense |
-| PUT | `/api/expenses/{id}` | Update expense |
-| DELETE | `/api/expenses/{id}` | Delete expense |
-| POST | `/api/receipts/scan` | Upload receipt → OCR → AI extraction |
-| GET | `/api/analytics/summary` | Spending summary by period |
-| GET | `/api/analytics/recent` | Recent expenses |
-| GET | `/api/analytics/ai-summary` | AI-generated spending summary |
-| GET | `/api/budgets` | List budgets |
-| POST | `/api/budgets` | Create/update budget |
-| PUT | `/api/budgets/{id}` | Update budget |
-| DELETE | `/api/budgets/{id}` | Delete budget |
+The API exposes 20 routes:
 
-All endpoints except `/api/health` and `/api/categories` require a valid JWT in the `Authorization: Bearer <token>` header.
+| Area | Routes |
+|---|---|
+| General | `GET /`, `GET /api/health`, `GET /api/categories` |
+| Expenses | `POST /api/expenses/parse-text`, `POST /api/expenses`, `GET /api/expenses`, `GET /api/expenses/{id}`, `PUT /api/expenses/{id}`, `DELETE /api/expenses/{id}` |
+| Receipts | `POST /api/receipts/scan` |
+| Analytics | `GET /api/analytics/summary`, `GET /api/analytics/recent`, `GET /api/analytics/dashboard`, `GET /api/analytics/ai-summary`, `GET /api/analytics/insights`, `POST /api/analytics/insights/{key:path}/dismiss` |
+| Budgets | `GET /api/budgets`, `POST /api/budgets`, `PUT /api/budgets/{id}`, `DELETE /api/budgets/{id}` |
 
----
+All routes except `/`, `/api/health`, and `/api/categories` require a valid Supabase JWT in `Authorization: Bearer <token>`.
 
 ## Database Schema
 
-### expenses
-| Column | Type | Notes |
-|--------|------|-------|
-| id | UUID | Primary key |
-| user_id | UUID | References auth.users |
-| amount | DECIMAL(12,2) | Must be > 0 |
-| currency | VARCHAR(10) | Default: INR |
-| category | VARCHAR(50) | From allowed list |
-| subcategory | VARCHAR(50) | Optional |
-| merchant | VARCHAR(200) | Optional |
-| description | TEXT | Optional |
-| expense_date | DATE | Required |
-| payment_method | VARCHAR(50) | Default: Unknown |
-| source | VARCHAR(30) | manual/natural_language/receipt |
-| receipt_image_url | TEXT | Optional |
-| ocr_text | TEXT | Raw OCR output |
-| created_at | TIMESTAMPTZ | Auto |
+`backend/database_setup.sql` creates the `expenses`, `budgets`, and `insight_dismissals` tables. Each has a `user_id`; Row Level Security policies limit access to rows belonging to the authenticated user.
 
-### budgets
-| Column | Type | Notes |
-|--------|------|-------|
-| id | UUID | Primary key |
-| user_id | UUID | References auth.users |
-| category | VARCHAR(50) | "overall" or category name |
-| amount | DECIMAL(12,2) | Must be > 0 |
-| month | VARCHAR(7) | YYYY-MM format |
-| created_at | TIMESTAMPTZ | Auto |
+## Testing
 
-Row Level Security is enabled on both tables — users can only access their own data.
+From the repository root, install the Python dependencies and run:
 
----
-
-## AI Pipeline
-
-### Natural Language → Expense
-```
-User text
-  → Groq LLM (with date context + category constraints)
-  → JSON response
-  → Pydantic validation (AIExpenseExtraction)
-  → Frontend confirmation UI
-  → User edits/confirms
-  → POST /api/expenses
-  → Supabase INSERT
-```
-
-### Receipt → Expense
-```
-Receipt image
-  → OCR.space API (Engine 2)
-  → Raw OCR text
-  → Groq LLM (receipt extraction prompt)
-  → JSON response
-  → Pydantic validation
-  → Frontend confirmation UI
-  → User edits/confirms
-  → POST /api/expenses
-  → Supabase INSERT
-```
-
-### Key Safety Measures
-- AI output **never** directly modifies the database
-- All AI responses are validated with Pydantic before display
-- Users must explicitly confirm before saving
-- Categories are constrained to an allowed list
-- Dates are validated and clamped (no future dates)
-- Amount must be > 0
-- Merchant/payment set to null/"Unknown" when AI is unsure
-
----
-
-## Deployment
-
-### Backend (any Python host)
 ```bash
-pip install -r requirements.txt
-uvicorn app.main:app --host 0.0.0.0 --port 8001
+python -m pip install -r requirements.txt
+cd backend
+python -m pytest tests -q
 ```
 
-### Production Deployment (Vercel)
+The test suite passes without `.env` files, API keys, or external API calls. GitHub Actions runs the same test command on pushes and pull requests to `main`.
 
-- **Production URL:** [https://ai-expense-tracker-peach-kappa.vercel.app](https://ai-expense-tracker-peach-kappa.vercel.app)
-- **CI/CD Integration:** Connected directly to GitHub repository (`kunjvachharajani/Ai-Expense-Tracker`). Every push to the `main` branch automatically triggers an optimized production deployment.
-- **Architecture:** Unified fullstack deployment on Vercel — React frontend is compiled to `frontend/dist` and FastAPI Python backend runs as serverless functions under `/api/*`.
+## Security
 
-#### Environment Variables (Vercel Project Settings)
-| Variable | Description |
-|---|---|
-| `GROQ_API_KEY` | Groq Cloud API key for natural language & receipt data extraction |
-| `OCR_SPACE_API_KEY` | OCR.space API key for receipt text recognition |
-| `SUPABASE_URL` | Supabase Project URL |
-| `SUPABASE_ANON_KEY` | Supabase Anonymous Client Key |
-| `SUPABASE_SERVICE_ROLE_KEY` | Supabase Service Role Secret Key |
-| `GROQ_MODEL` | Groq LLM model name (e.g. `openai/gpt-oss-120b` or `qwen/qwen3.8-27b`) |
-| `VITE_SUPABASE_URL` | Frontend Supabase Project URL |
-| `VITE_SUPABASE_ANON_KEY` | Frontend Supabase Anonymous Key |
-| `VITE_API_URL` | Frontend API URL (leave empty in production to route via `/api`) |
-
----
+- Protected API routes verify the Supabase JWT and use the authenticated user's ID when querying user-owned records.
+- Row Level Security policies in `backend/database_setup.sql` scope expenses, budgets, and insight dismissals to their owner.
+- Keep credentials in environment variables or local `.env` files. `.env` is ignored by Git; do not commit secrets.
 
 ## Troubleshooting
 
-| Issue | Solution |
-|-------|---------|
-| CORS errors | Ensure `FRONTEND_URL` in backend `.env` matches your frontend origin |
-| 401 Unauthorized | Check that Supabase keys are correct and JWT is being sent |
-| OCR returns empty | Try a clearer image; OCR.space Engine 2 works best with receipts |
-| AI returns invalid JSON | The system retries with code-fence stripping; if persistent, try a different Groq model |
-| Supabase RLS errors | Run the full `database_setup.sql` including RLS policies |
-| Import errors | Ensure you're running from the `backend/` directory so Python finds `app.*` |
+- For API import errors, run Uvicorn from the `backend/` directory.
+- For CORS errors in local development, set `FRONTEND_URL` to the frontend origin.
+- If automatic receipt extraction is incomplete, review the draft and enter or correct its fields before saving.
 
----
+## Deployment
+
+The Vercel configuration builds the frontend and routes `/api/*` to `api/index.py`. Configure the required Supabase and Groq/OCR environment variables in the Vercel project settings. `GROQ_MODEL` and `GROQ_VISION_MODEL` select the text and vision models; `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, and optionally `VITE_API_URL` configure the frontend.
 
 ## License
 
-MIT
+MIT. See [LICENSE](LICENSE).
