@@ -3,7 +3,8 @@
   "outputDirectory": "frontend/dist",
   "functions": {
     "api/**/*.py": {
-      "includeFiles": "backend/**",
+      "includeFiles": "backend/app/**",
+      "excludeFiles": "{backend/.venv/**,backend/.pytest_cache/**,backend/tests/**,backend/conftest.py,backend/.env,backend/.env.example,backend/database_setup.sql,backend/pyproject.toml}",
       "maxDuration": 30
     }
   },
