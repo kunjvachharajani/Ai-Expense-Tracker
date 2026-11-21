@@ -71,6 +71,21 @@ export function onExpenseChanged(callback) {
   return () => window.removeEventListener(EXPENSE_CHANGE_EVENT, handler);
 }
 
+const BUDGET_CHANGE_EVENT = 'expense-tracker-budget-changed';
+
+function emitBudgetChanged(data) {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent(BUDGET_CHANGE_EVENT, { detail: data }));
+  }
+}
+
+export function onBudgetChanged(callback) {
+  if (typeof window === 'undefined') return () => {};
+  const handler = (e) => callback(e.detail);
+  window.addEventListener(BUDGET_CHANGE_EVENT, handler);
+  return () => window.removeEventListener(BUDGET_CHANGE_EVENT, handler);
+}
+
 export function getClientDateStr() {
   const d = new Date();
   const y = d.getFullYear();
@@ -261,23 +276,29 @@ export async function listBudgets(month) {
 }
 
 export async function createBudget(budget) {
-  return request('/api/budgets', {
+  const created = await request('/api/budgets', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(budget),
   });
+  emitBudgetChanged({ action: 'create', budget: created });
+  return created;
 }
 
 export async function updateBudget(id, data) {
-  return request(`/api/budgets/${id}`, {
+  const updated = await request(`/api/budgets/${id}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   });
+  emitBudgetChanged({ action: 'update', budget: updated });
+  return updated;
 }
 
 export async function deleteBudget(id) {
-  return request(`/api/budgets/${id}`, { method: 'DELETE' });
+  const deleted = await request(`/api/budgets/${id}`, { method: 'DELETE' });
+  emitBudgetChanged({ action: 'delete', id });
+  return deleted;
 }
 
 // ---------- Categories ----------

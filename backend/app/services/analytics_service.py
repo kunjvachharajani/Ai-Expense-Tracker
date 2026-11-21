@@ -166,6 +166,39 @@ def get_recent_expenses(
     return result.data or []
 
 
+def _get_budget_remaining(user_id: str, month: str, expenses: List[dict]) -> Optional[float]:
+    """Calculate remaining budget for the overall budget or tracked categories."""
+    sb = get_supabase_client()
+    result = (
+        sb.table("budgets")
+        .select("category, amount")
+        .eq("user_id", user_id)
+        .eq("month", month)
+        .execute()
+    )
+    budgets = result.data or []
+    overall_budget = next((b for b in budgets if b.get("category") == "overall"), None)
+
+    if overall_budget:
+        total_spent = sum((Decimal(str(e["amount"])) for e in expenses), Decimal("0"))
+        return round(float(Decimal(str(overall_budget["amount"])) - total_spent), 2)
+
+    category_budgets = {
+        b["category"]: Decimal(str(b["amount"]))
+        for b in budgets
+        if b.get("category") != "overall"
+    }
+    if not category_budgets:
+        return None
+
+    budget_total = sum(category_budgets.values(), Decimal("0"))
+    tracked_spend = sum(
+        (Decimal(str(e["amount"])) for e in expenses if e.get("category") in category_budgets),
+        Decimal("0"),
+    )
+    return round(float(budget_total - tracked_spend), 2)
+
+
 def get_dashboard_data(
     user_id: str,
     start_date: str,
@@ -233,6 +266,19 @@ def get_dashboard_data(
                 ),
                 "recent": p_expenses[:recent_limit],
             }
+
+        if "month" in periods_dict:
+            month_expenses = [
+                e for e in all_expenses
+                if (day := _expense_day(e)) is not None and day.startswith(current_today[:7])
+            ]
+            periods_dict["month"]["summary"]["budget_remaining"] = _get_budget_remaining(
+                user_id, current_today[:7], month_expenses
+            )
         response["periods"] = periods_dict
+    elif start_date[:7] == current_today[:7]:
+        active_summary["budget_remaining"] = _get_budget_remaining(
+            user_id, current_today[:7], active_expenses
+        )
 
     return response

@@ -8,6 +8,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from app.api.auth import get_current_user
+from app.api.analytics import invalidate_analytics_cache
 from app.db import get_supabase_client
 from app.schemas import BudgetCreate, BudgetUpdate, BudgetResponse
 
@@ -64,6 +65,7 @@ async def create_budget(body: BudgetCreate, user: dict = Depends(get_current_use
         result = sb.table("budgets").insert(data).execute()
 
     if result.data:
+        invalidate_analytics_cache(user["id"])
         return result.data[0]
     raise HTTPException(status_code=500, detail="Failed to save budget.")
 
@@ -83,6 +85,7 @@ async def update_budget(budget_id: str, body: BudgetUpdate, user: dict = Depends
 
     result = sb.table("budgets").update(update_data).eq("id", budget_id).execute()
     if result.data:
+        invalidate_analytics_cache(user["id"])
         return result.data[0]
     raise HTTPException(status_code=500, detail="Failed to update budget.")
 
@@ -97,3 +100,4 @@ async def delete_budget(budget_id: str, user: dict = Depends(get_current_user)):
         raise HTTPException(status_code=404, detail="Budget not found.")
 
     sb.table("budgets").delete().eq("id", budget_id).execute()
+    invalidate_analytics_cache(user["id"])

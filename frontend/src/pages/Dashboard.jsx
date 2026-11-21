@@ -3,7 +3,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { IndianRupee, TrendingUp, Receipt, Tag, PlusCircle, Sparkles, ArrowRight, Lightbulb, AlertTriangle, X, Utensils, CarFront, ShoppingBag, ReceiptText, Clapperboard, HeartPulse, GraduationCap, Plane, RefreshCw, UserRound, House, CircleEllipsis } from 'lucide-react';
 import { Area, AreaChart, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
-import { getDashboardData, getAISummary, getInsights, dismissInsight, onExpenseChanged } from '../services/api';
+import { getDashboardData, getAISummary, getInsights, dismissInsight, onExpenseChanged, onBudgetChanged } from '../services/api';
 import { ChartTooltip, CountUp, DashboardSkeleton, EmptyChart, spring } from '../components/DashboardPrimitives';
 import AnimatedBackground from '../components/AnimatedBackground';
 import './Dashboard.css';
@@ -120,18 +120,22 @@ export default function Dashboard() {
     loadAIAndInsights();
   }, [location.key]);
 
-  // Listen for expense changes across the app (creation, updates, deletes)
+  // Refresh dashboard data and insights when expenses or budgets change.
   useEffect(() => {
-    const unsubscribe = onExpenseChanged(() => {
-      // Clear cache and immediately refresh all 3 periods + AI summary + insights
+    const refreshDashboard = () => {
       try {
         sessionStorage.removeItem(CACHE_KEY);
       } catch {}
       periodsDataRef.current = null;
       loadData(true);
       loadAIAndInsights();
-    });
-    return unsubscribe;
+    };
+    const unsubscribeExpense = onExpenseChanged(refreshDashboard);
+    const unsubscribeBudget = onBudgetChanged(refreshDashboard);
+    return () => {
+      unsubscribeExpense();
+      unsubscribeBudget();
+    };
   }, [loadData, loadAIAndInsights]);
 
   // Handle switching between This Week, This Month, Last Month instantly
